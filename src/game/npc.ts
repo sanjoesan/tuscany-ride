@@ -143,6 +143,7 @@ export class NpcManager {
       r.rider.object.position.y += 0.12;
       r.rider.object.rotation.set(0, Math.atan2(-at.dir.z, at.dir.x), 0);
       r.rider.object.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.atan(at.grade));
+      r.rider.setLights(this.world.environment.isNight);
       r.rider.update(dt, v, v > 1 ? 82 : 0);
     }
 

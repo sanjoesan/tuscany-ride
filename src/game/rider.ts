@@ -12,7 +12,11 @@ export class Rider {
   private legR: THREE.Group;
   private crankAngle = 0;
 
-  constructor(bikeColor = 0xd6452c, jerseyColor = 0x2270c9, withShadowBlob = true) {
+  private frontLampMat: THREE.MeshStandardMaterial;
+  private rearLampMat: THREE.MeshStandardMaterial;
+  private headlight: THREE.SpotLight | null = null;
+
+  constructor(bikeColor = 0xd6452c, jerseyColor = 0x2270c9, withShadowBlob = true, withHeadlight = false) {
     const g = new THREE.Group();
     g.name = "rider";
 
@@ -112,6 +116,35 @@ export class Rider {
     this.legL = mkLeg(1);
     this.legR = mkLeg(-1);
 
+    // bike lights: white front lamp on the bars, red rear lamp at the saddle
+    this.frontLampMat = new THREE.MeshStandardMaterial({
+      color: 0xf8f8f0,
+      emissive: 0xfff6d8,
+      emissiveIntensity: 0.25,
+      roughness: 0.4,
+    });
+    this.rearLampMat = new THREE.MeshStandardMaterial({
+      color: 0xb01616,
+      emissive: 0xff2020,
+      emissiveIntensity: 0.4,
+      roughness: 0.4,
+    });
+    const frontLamp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.07), this.frontLampMat);
+    frontLamp.position.set(0.52, 1.0, 0);
+    g.add(frontLamp);
+    const rearLamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.06), this.rearLampMat);
+    rearLamp.position.set(-0.34, 0.97, 0);
+    g.add(rearLamp);
+
+    // the player's bike gets a real headlight beam for night rides
+    if (withHeadlight) {
+      this.headlight = new THREE.SpotLight(0xfff2cc, 0, 26, 0.45, 0.55, 1.1);
+      this.headlight.position.set(0.52, 1.0, 0);
+      this.headlight.target.position.set(9, 0, 0);
+      g.add(this.headlight);
+      g.add(this.headlight.target);
+    }
+
     // soft contact shadow blob (cheaper than a casting rider)
     if (withShadowBlob) {
       const shadow = new THREE.Mesh(
@@ -128,6 +161,21 @@ export class Rider {
   }
 
   static jerseyCache = new Map<number, THREE.CanvasTexture>();
+
+  /** hide the body/bike meshes but keep the headlight (first-person view) */
+  setBodyVisible(visible: boolean): void {
+    for (const child of this.object.children) {
+      if (child === this.headlight || child === this.headlight?.target) continue;
+      child.visible = visible;
+    }
+  }
+
+  /** lamps glow bright (and the player's headlight beam turns on) at night */
+  setLights(night: boolean): void {
+    this.frontLampMat.emissiveIntensity = night ? 3.5 : 0.25;
+    this.rearLampMat.emissiveIntensity = night ? 4 : 0.4;
+    if (this.headlight) this.headlight.intensity = night ? 60 : 0;
+  }
 
   /** advance animation: wheel spin from speed, leg cadence from rpm */
   update(dt: number, speedMs: number, cadenceRpm: number): void {

@@ -82,6 +82,8 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
       car paint texture + head/taillights
 - [x] Editor: town tool = click name-labeled town to select, click ground to move; pan 3x faster
 - [x] Dev hashes: #route=N, #time=night, #season=autumn (plus #autoride=S, #noui, cam2)
+- [x] Bike lights: front/rear lamps on all bikes (emissive, bright at night), player gets a real
+      SpotLight headlight beam; works in fpv via Rider.setBodyVisible (headlight stays on)
 - [ ] Watch list: night maybe still dark (bumped moon 0.55), headless sea renders grey (check real GPU)
 
 **2026-06-10 (2)** - v0.2 pushed & deployed:

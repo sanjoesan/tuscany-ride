@@ -48,7 +48,7 @@ export class RideController {
     this.camera = camera;
     this.hud = hud;
     this.telemetry = telemetry;
-    this.rider = new Rider(bikeColor, jerseyColor);
+    this.rider = new Rider(bikeColor, jerseyColor, true, true);
   }
 
   start(massKg: number, difficulty: number, route: Route): void {
@@ -118,7 +118,8 @@ export class RideController {
       targetPos = pos.clone().addScaledVector(side, 11).addScaledVector(up, 3).addScaledVector(at.dir, 2);
       lookAt = pos.clone().addScaledVector(up, 1);
     }
-    this.rider.object.visible = this.camMode !== "fpv";
+    this.rider.setBodyVisible(this.camMode !== "fpv");
+    this.rider.setLights(this.world.environment.isNight);
     this.camPos.lerp(targetPos, lerpK);
     this.camTarget.lerp(lookAt, 1 - Math.exp(-dt * (this.camMode === "fpv" ? 14 : 5)));
     this.camera.position.copy(this.camPos);

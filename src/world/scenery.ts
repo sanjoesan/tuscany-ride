@@ -350,6 +350,8 @@ export class Environment {
   private mode: TimeOfDay = "afternoon";
   private lastEnvMapAt = -999;
   private envDirty = true;
+  /** true while the scene is moonlit (riders switch their lamps on) */
+  isNight = false;
 
   constructor(map: MapData, scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
@@ -424,6 +426,7 @@ export class Environment {
   /** Position sun/moon and re-tune all lights for the given solar elevation. */
   private applySun(elDeg: number, azDeg: number): void {
     const night = elDeg <= 1.5;
+    this.isNight = night;
     // at night the scene light becomes the moon, high in the east
     const lightEl = night ? 42 : elDeg;
     const lightAz = night ? 70 : azDeg;
