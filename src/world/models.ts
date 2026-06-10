@@ -108,7 +108,19 @@ const PLASTER = [0xe8d5ae, 0xdfc492, 0xe6cdb5, 0xd9b98a, 0xe2d2c0];
 const STONE = 0xb0a48e;
 const TRUNK = 0x6e4f2e;
 
-export function buildModel(type: SceneryType): THREE.BufferGeometry {
+export interface BuiltModel {
+  geo: THREE.BufferGeometry;
+  /** window panes / lantern glass - drawn with NIGHT_GLOW_MATERIAL */
+  glow: THREE.BufferGeometry | null;
+}
+
+export function buildModel(type: SceneryType): BuiltModel {
+  const glowParts: THREE.BufferGeometry[] = [];
+  const geo = buildModelGeo(type, glowParts);
+  return { geo, glow: glowParts.length ? mergeAll(glowParts) : null };
+}
+
+function buildModelGeo(type: SceneryType, glow: THREE.BufferGeometry[]): THREE.BufferGeometry {
   switch (type) {
     case "cypress": {
       // one tall stretched blob + tip = organic flame silhouette
@@ -157,18 +169,18 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
         box(1.1, 2.2, 0.15, 0x4a3826, (Math.random() - 0.5) * (w * 0.4), 0, d / 2), // door
         cyl(0.22, 0.26, 1.1, 0xb39577, w * 0.25, h + 1.2, -d * 0.2, 6), // chimney
       ];
-      // front windows with green shutters, upper floor
+      // front windows with green shutters, upper floor (panes glow at night)
       const winN = 2 + Math.floor(Math.random() * 2);
       for (let i = 0; i < winN; i++) {
         const wx = -w / 2 + (w / (winN + 1)) * (i + 1);
-        parts.push(box(0.85, 1.15, 0.15, 0x3a4a55, wx, h * 0.52, d / 2));
+        glow.push(box(0.85, 1.15, 0.15, 0x3a4a55, wx, h * 0.52, d / 2 + 0.01));
         parts.push(box(0.3, 1.15, 0.1, 0x2e4a2e, wx - 0.62, h * 0.52, d / 2));
         parts.push(box(0.3, 1.15, 0.1, 0x2e4a2e, wx + 0.62, h * 0.52, d / 2));
       }
       // side windows
       for (const side of [1, -1]) {
         for (let i = 0; i < 2; i++) {
-          parts.push(box(0.15, 1.05, 0.85, 0x3a4a55, (w / 2) * side, h * 0.5, -d / 4 + (i * d) / 2.2));
+          glow.push(box(0.16, 1.05, 0.85, 0x3a4a55, (w / 2) * side, h * 0.5, -d / 4 + (i * d) / 2.2));
         }
       }
       return mergeAll(parts);
@@ -176,14 +188,15 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
 
     case "villa": {
       const w = 10, d = 12, h = 6.5;
+      glow.push(box(0.9, 1.3, 0.15, 0x3a4a55, -3, 3.4, d / 2 + 0.01));
+      glow.push(box(0.9, 1.3, 0.15, 0x3a4a55, 3, 3.4, d / 2 + 0.01));
+      glow.push(box(0.9, 1.3, 0.15, 0x3a4a55, 0, 3.4, d / 2 + 0.01));
       return mergeAll([
         box(w, h, d, 0xe2c694),
         roof(w + 0.8, 2.6, d + 0.8, TERRACOTTA2, 0, h, 0),
         box(3.4, 9, 3.4, 0xd9bd8a, w / 2 - 1, 0, -d / 2 + 1),
         roof(4, 1.6, 4, TERRACOTTA, w / 2 - 1, 9, -d / 2 + 1),
         box(1.2, 2.4, 0.15, 0x4a3826, 0, 0, d / 2),
-        box(0.9, 1.3, 0.15, 0x3a4a55, -3, 3.4, d / 2),
-        box(0.9, 1.3, 0.15, 0x3a4a55, 3, 3.4, d / 2),
       ]);
     }
 
@@ -198,15 +211,15 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
 
     case "church": {
       const w = 11, d = 20, h = 8;
+      glow.push(cyl(1.4, 1.4, 1.3, 0x6a7e95, 0, h + 2.6, d / 2 - 2.4, 12)); // rose window
+      glow.push(box(1, 1.6, 0.32, 0x222222, w / 2 + 3, 16.4, -d / 2 + 3 + 1.9)); // bell opening
       return mergeAll([
         box(w, h, d, 0xe8dcc0), // nave
         roof(w + 0.8, 3.2, d + 0.8, TERRACOTTA, 0, h, 0),
         box(2, 4, 0.3, 0x4a3826, 0, 0, d / 2), // portal
-        cyl(1.6, 1.6, 1.2, 0xe8dcc0, 0, h + 2.6, d / 2 - 2.5, 12), // rose window hint
         // campanile
         box(4, 19, 4, STONE, w / 2 + 3, 0, -d / 2 + 3),
         cone(3.1, 3.4, TERRACOTTA2, w / 2 + 3, 19, -d / 2 + 3, 4),
-        box(1, 1.6, 0.3, 0x222222, w / 2 + 3, 16.4, -d / 2 + 3 + 1.9), // bell opening
       ]);
     }
 
@@ -267,11 +280,11 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
     }
 
     case "lamp":
-      // iron street lamp with a warm lantern
+      // iron street lamp; the lantern glass glows after dark
+      glow.push(box(0.3, 0.42, 0.3, 0xd8c79a, 0, 3.4, 0));
       return mergeAll([
         cyl(0.16, 0.22, 0.35, 0x2c2c30, 0, 0, 0, 8),
         cyl(0.06, 0.08, 3.1, 0x2c2c30, 0, 0.3, 0, 6),
-        box(0.3, 0.42, 0.3, 0xffedb8, 0, 3.4, 0), // lantern glass
         cone(0.28, 0.25, 0x2c2c30, 0, 3.82, 0, 4),
       ]);
 
@@ -421,6 +434,18 @@ export const PLANT_MATERIAL = new THREE.MeshStandardMaterial({
 });
 
 export const SHARED_MODEL_MATERIAL = BUILDING_MATERIAL;
+
+/**
+ * Window panes & lantern glass. Dark glass by day; Environment raises
+ * emissiveIntensity at dusk/night so every village lights up.
+ */
+export const NIGHT_GLOW_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0x2e3c47,
+  emissive: 0xffd690,
+  emissiveIntensity: 0,
+  roughness: 0.35,
+  metalness: 0.1,
+});
 
 export function modelMaterial(type: SceneryType): THREE.MeshStandardMaterial {
   return type === "cypress" || type === "pine" || type === "olive" ? PLANT_MATERIAL : BUILDING_MATERIAL;

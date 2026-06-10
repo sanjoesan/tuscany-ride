@@ -68,6 +68,24 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-10 (5)** - v0.5 free roam + real network:
+- [x] Free-ride mode (route picker entry "-1"): turn at junctions with arrow chooser UI
+      (HUD #turn-ui, default = straightest exit), keyboard arrows + U/Backspace u-turn,
+      gamepad (stick turn, B u-turn, Y camera, RT = demo power). VirtualTrainer keys now ↑/↓ & +/-.
+- [x] Network v2: 48 nodes / 87 edges / 63 km. Edge kinds: "main" (town-to-town Dijkstra backbone,
+      7 m, markings) vs "lane" (4.4 m, unmarked, worn edges). Per-sample half-width drives ribbon,
+      terrain corridor and textures. Junction pads sized by widest road.
+- [x] Town street grids: 1-5 inner nodes per town by size, lanes to the piazza + ring links
+      (min piazza degree 5). Towns differ in size (harbour 170-220 m).
+- [x] Night glow: window panes/lantern glass are separate glow geometries (BuiltModel.glow) drawn
+      with NIGHT_GLOW_MATERIAL; Environment fades emissive in below 14° sun elevation (dusk+night).
+- [x] More lone houses/farmsteads along country roads; vehicles prefer main roads, drive centered
+      and slower on lanes.
+- [x] Dev hashes: route=-1 (free ride), stopAtTurn (halt at first junction chooser). Chrome now
+      used for headless shots (user request; Edge broke itself mid-update once).
+- [x] Verified via Chrome screenshots: lane roads render narrow/unmarked, junction chooser shows,
+      free ride accumulates km. All 27 smoke tests pass.
+
 **2026-06-10 (3)** - v0.3 pushed & deployed:
 - [x] FIXED (was top user complaint): roads no longer sink under terrain on hills - corridor is
       fully flattened >= one terrain-grid cell each side (Terrain.flatHalf), carved 0.3 m below,

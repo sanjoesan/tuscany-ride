@@ -20,6 +20,29 @@ export class Hud {
 
   hide(): void {
     $("hud").classList.add("hidden");
+    this.showTurns(null, 0);
+  }
+
+  /** free roam has no fixed route - hide the elevation profile */
+  setFreeMode(free: boolean): void {
+    ($("profile-canvas") as HTMLCanvasElement).style.display = free ? "none" : "";
+  }
+
+  /** junction arrows: one glyph per exit, the chosen one highlighted */
+  showTurns(angles: number[] | null, selected: number): void {
+    const el = $("turn-ui");
+    if (!angles || angles.length === 0) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = angles
+      .map((a, i) => {
+        const glyph =
+          a < -2.4 ? "&#10550;" : a < -0.5 ? "&#8624;" : a <= 0.5 ? "&#8593;" : a <= 2.4 ? "&#8625;" : "&#10551;";
+        return `<span class="turn-arrow${i === selected ? " sel" : ""}">${glyph}</span>`;
+      })
+      .join("");
   }
 
   setPath(samples: RoadSample[], totalLength: number): void {
@@ -57,6 +80,7 @@ export class Hud {
   }
 
   private drawProfile(rideDist: number): void {
+    if (this.profile.length === 0) return; // free ride has no fixed route
     const ctx = this.profileCtx;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;

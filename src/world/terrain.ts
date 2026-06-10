@@ -13,6 +13,8 @@ export interface RoadSample {
   /** unit direction of travel (xz) */
   dirX: number;
   dirZ: number;
+  /** paved half-width of this road (main 3.5, lane 2.2) */
+  half?: number;
 }
 
 const ROAD_HALF = 3.5; // paved half-width
@@ -91,10 +93,10 @@ export class Terrain {
   private roadSamples: RoadSample[] = [];
   private grid = new Map<number, number[]>(); // spatial hash cell -> sample indices
   private gridCell = 30;
-  /** terrain is fully flattened to road height out to this distance... */
-  private flatHalf: number;
-  /** ...and blends back to natural height by this distance */
-  private blendEnd: number;
+  /** extra flatten width beyond the asphalt (>= one terrain-grid cell) */
+  private spacingPad: number;
+  /** outer search radius for road influence */
+  private maxBlend: number;
 
   constructor(map: MapData, quality: "full" | "fast" = "full", season: Season = "summer") {
     this.map = map;
@@ -105,8 +107,8 @@ export class Terrain {
     // the flattened corridor must span at least one terrain-grid cell on
     // each side, otherwise hillside triangles poke through the asphalt
     const spacing = map.size / this.meshSegments();
-    this.flatHalf = ROAD_HALF + Math.max(7, spacing * 1.0);
-    this.blendEnd = this.flatHalf + 15;
+    this.spacingPad = Math.max(7, spacing * 1.0);
+    this.maxBlend = ROAD_HALF + this.spacingPad + 15;
   }
 
   meshSegments(): number {
@@ -204,9 +206,10 @@ export class Terrain {
   /** Final height: natural terrain blended flat under and next to the road. */
   height(x: number, z: number): number {
     let h = this.baseHeight(x, z);
-    const near = this.nearestRoad(x, z, this.blendEnd);
+    const near = this.nearestRoad(x, z, this.maxBlend);
     if (near) {
-      const f = 1 - smoothstep(this.flatHalf, this.blendEnd, near.dist);
+      const flat = (near.sample.half ?? ROAD_HALF) + this.spacingPad;
+      const f = 1 - smoothstep(flat, flat + 15, near.dist);
       h = lerp(h, near.sample.y - 0.3, f); // corridor carved below the asphalt
     }
     return h;

@@ -86,6 +86,10 @@ let menuAngle = 0;
 function populateRoutePicker(): void {
   const sel = $("route-select") as HTMLSelectElement;
   sel.innerHTML = "";
+  const free = document.createElement("option");
+  free.value = "-1";
+  free.textContent = "🧭 Free ride - explore the network, turn anywhere";
+  sel.append(free);
   world.routes.forEach((r, i) => {
     const opt = document.createElement("option");
     const h = Math.floor(r.stats.estMinutes / 60);
@@ -106,6 +110,11 @@ function populateRoutePicker(): void {
 }
 
 function updateRouteInfo(): void {
+  if (selectedRoute === -1) {
+    $("route-info").textContent =
+      `Free ride on ${world.network.totalKm.toFixed(0)} km of roads: ←/→ picks the turn at junctions, U turns around`;
+    return;
+  }
   const r = world.routes[selectedRoute];
   if (!r) return;
   $("route-info").textContent =
@@ -113,8 +122,9 @@ function updateRouteInfo(): void {
 }
 
 function startRide(): void {
-  const route = world.routes[selectedRoute];
-  if (!route) return;
+  const freeRide = selectedRoute === -1;
+  const route = world.routes[freeRide ? 0 : selectedRoute];
+  if (!route && !freeRide) return;
   const weight = Number(($("inp-weight") as HTMLInputElement).value) || 75;
   const bikeWeight = Number(($("inp-bike-weight") as HTMLInputElement).value) || 9;
   const difficulty = Number(($("inp-difficulty") as HTMLInputElement).value) / 100;
@@ -124,10 +134,17 @@ function startRide(): void {
   const jerseyColor = parseInt(($("inp-jersey") as HTMLInputElement).value.slice(1), 16);
   ride = new RideController(world, camera, hud, telemetry, bikeColor, jerseyColor);
   ride.onGrade = (g) => trainer.setGrade(g);
-  ride.start(weight + bikeWeight, difficulty, route);
+  ride.onTurnOptions = (options, sel) =>
+    hud.showTurns(options ? options.map((o) => o.angle) : null, sel);
+  if (freeRide) {
+    ride.startFree(weight + bikeWeight, difficulty, 0);
+    toast("Free ride - ←/→ choose the turn, U turns around. Buon viaggio!");
+  } else {
+    ride.start(weight + bikeWeight, difficulty, route);
+    toast(`${route.name} - ${route.stats.distanceKm.toFixed(1)} km. Buon viaggio!`);
+  }
   $("menu").classList.add("hidden");
   mode = "riding";
-  toast(`${route.name} - ${route.stats.distanceKm.toFixed(1)} km. Buon viaggio!`);
 }
 
 function endRide(): void {
@@ -272,8 +289,40 @@ $("btn-reset-map").onclick = () => {
 };
 
 window.addEventListener("keydown", (e) => {
-  if (mode === "riding" && (e.key === "c" || e.key === "C")) ride?.cycleCamera();
+  if (mode !== "riding" || !ride) return;
+  if (e.key === "c" || e.key === "C") ride.cycleCamera();
+  else if (e.key === "ArrowLeft") {
+    ride.chooseTurn(-1);
+    e.preventDefault();
+  } else if (e.key === "ArrowRight") {
+    ride.chooseTurn(1);
+    e.preventDefault();
+  } else if (e.key === "u" || e.key === "U" || e.key === "Backspace") {
+    ride.uTurn();
+  }
 });
+
+// ---------------- gamepad: stick = turn, B = u-turn, RT = demo power ----------------
+let gpPrevAxis = 0;
+let gpPrevB = false;
+let gpPrevY = false;
+function pollGamepad(): void {
+  const gp = navigator.getGamepads?.()[0];
+  if (!gp || mode !== "riding" || !ride) return;
+  const axis = gp.axes[0] ?? 0;
+  if (axis < -0.55 && gpPrevAxis >= -0.55) ride.chooseTurn(-1);
+  if (axis > 0.55 && gpPrevAxis <= 0.55) ride.chooseTurn(1);
+  gpPrevAxis = axis;
+  const b = gp.buttons[1]?.pressed ?? false;
+  if (b && !gpPrevB) ride.uTurn();
+  gpPrevB = b;
+  const y = gp.buttons[3]?.pressed ?? false;
+  if (y && !gpPrevY) ride.cycleCamera();
+  gpPrevY = y;
+  // right trigger drives the virtual trainer in demo mode
+  const rt = gp.buttons[7]?.value ?? 0;
+  if (virtual && rt > 0.04) virtual.targetPower = Math.round(rt * 500);
+}
 
 ($("inp-time") as HTMLSelectElement).onchange = (e) => {
   world?.environment.setTimeOfDay((e.target as HTMLSelectElement).value as never);
@@ -303,6 +352,7 @@ function animate(): void {
   const dt = Math.min(clock.getDelta(), 0.1);
   const t = clock.elapsedTime;
   world.update(t, camera.position);
+  pollGamepad();
   if (mode !== "editor") {
     npcs?.update(
       dt,
@@ -352,8 +402,8 @@ setTimeout(() => {
   // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride,
   // #route=N / #time=night / #season=autumn force a specific setup
   if (location.hash.includes("noui")) $("menu").classList.add("hidden");
-  const routeM = /route=(\d+)/.exec(location.hash);
-  if (routeM) selectedRoute = Math.min(world.routes.length - 1, Number(routeM[1]));
+  const routeM = /route=(-?\d+)/.exec(location.hash);
+  if (routeM) selectedRoute = Math.max(-1, Math.min(world.routes.length - 1, Number(routeM[1])));
   const timeM = /time=(\w+)/.exec(location.hash);
   if (timeM) world.environment.setTimeOfDay(timeM[1] as never);
   const seasonM = /season=(\w+)/.exec(location.hash);
@@ -372,6 +422,10 @@ setTimeout(() => {
     const ff = Number(/autoride=(\d+)/.exec(location.hash)?.[1] ?? 0);
     if (ff > 0 && ride) {
       for (let i = 0; i < ff * 10; i++) (ride as RideController).update(0.1);
+    }
+    if (location.hash.includes("stopAtTurn") && ride) {
+      const r2 = ride as RideController;
+      for (let i = 0; i < 4000 && !r2.hasTurnOptions; i++) r2.update(0.1);
     }
     if (location.hash.includes("cam2") && ride) {
       (ride as RideController).cycleCamera();

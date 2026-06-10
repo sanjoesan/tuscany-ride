@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { World } from "../world/world";
-import type { EdgePath } from "../world/road";
+import { samplePath } from "../world/road";
 import { Rider } from "./rider";
 import { mulberry32 } from "../world/noise";
 
@@ -169,9 +169,11 @@ export class NpcManager {
       const dirZ = v.reverse ? -pos.dirZ : pos.dirZ;
 
       // look ahead for cyclists in our lane: slow down, pull left to pass,
-      // then merge back - like a real driver
-      let laneTarget = 1.9;
-      let speedTarget = v.speed;
+      // then merge back - like a real driver. On narrow lanes there is no
+      // second lane: drive near the middle and give less clearance.
+      const narrow = path.kind === "lane";
+      let laneTarget = narrow ? 0.7 : 1.9;
+      let speedTarget = narrow ? v.speed * 0.75 : v.speed;
       const consider = (rp: THREE.Vector3, rSpeed: number) => {
         // measured from the road centerline so the check is stable while
         // the car itself swings out
@@ -181,7 +183,7 @@ export class NpcManager {
         const lateral = dx * -dirZ + dz * dirX; // + = right of travel
         const inOurLane = lateral > -0.5 && lateral < 3.6;
         if (inOurLane && ahead > -8 && ahead < 30) {
-          laneTarget = -1.5; // cross the centerline to pass
+          laneTarget = narrow ? -1.3 : -1.5; // pull out to pass
           if (ahead > 4 && v.lane > 0.2) {
             // not pulled out yet - hang back behind the rider
             speedTarget = Math.min(speedTarget, Math.max(rSpeed * 0.9, 3));
@@ -208,7 +210,13 @@ export class NpcManager {
           v.reverse = !v.reverse;
           v.s = 0;
         } else {
-          const next = options[Math.floor(this.rand() * options.length)];
+          // traffic prefers the main roads (3x weight)
+          const weighted: typeof options = [];
+          for (const o of options) {
+            weighted.push(o);
+            if (network.paths[o.idx].kind === "main") weighted.push(o, o);
+          }
+          const next = weighted[Math.floor(this.rand() * weighted.length)];
           v.pathIdx = next.idx;
           v.reverse = next.reverse;
           v.s = 0;
@@ -257,28 +265,6 @@ export class NpcManager {
       p.object.position.y += Math.abs(Math.sin(p.phase)) * 0.035;
     }
   }
-}
-
-/** Interpolate along an edge path at distance s (clamped). */
-function samplePath(path: EdgePath, s: number): { x: number; y: number; z: number; dirX: number; dirZ: number; grade: number } {
-  const samples = path.samples;
-  const n = samples.length;
-  const d = Math.max(0, Math.min(path.length, s));
-  let i = Math.min(n - 2, Math.floor((d / path.length) * (n - 1)));
-  while (i < n - 2 && samples[i + 1].dist < d) i++;
-  while (i > 0 && samples[i].dist > d) i--;
-  const a = samples[i];
-  const b = samples[i + 1];
-  const seg = b.dist - a.dist || 1;
-  const t = Math.min(1, Math.max(0, (d - a.dist) / seg));
-  return {
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-    z: a.z + (b.z - a.z) * t,
-    dirX: a.dirX + (b.dirX - a.dirX) * t,
-    dirZ: a.dirZ + (b.dirZ - a.dirZ) * t,
-    grade: a.grade + (b.grade - a.grade) * t,
-  };
 }
 
 // ---------------- low-poly vehicles & people (built facing +X) ----------------

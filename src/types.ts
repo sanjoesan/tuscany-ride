@@ -42,6 +42,8 @@ export interface RoadEdge {
   a: number;
   b: number;
   via: [number, number][];
+  /** "main" = two-lane with markings (town connections), "lane" = narrow single-lane country road */
+  kind?: "main" | "lane";
 }
 
 export interface MapData {

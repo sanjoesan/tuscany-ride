@@ -41,6 +41,21 @@ check("network has roads", map.edges.length >= map.nodes.length, `${map.edges.le
   check("road network connected", seen.size === map.nodes.length, `${seen.size}/${map.nodes.length} reachable`);
 }
 
+// road classes: main backbone + narrow lanes, and inner town streets
+{
+  const mains = map.edges.filter((e) => e.kind === "main").length;
+  const lanes = map.edges.filter((e) => e.kind === "lane").length;
+  check("main roads + lanes exist", mains >= 5 && lanes >= 10, `${mains} main, ${lanes} lanes`);
+  // every town piazza should have at least 3 roads (through-roads + inner streets)
+  const degree = map.nodes.map(() => 0);
+  for (const e of map.edges) {
+    degree[e.a]++;
+    degree[e.b]++;
+  }
+  const minTownDegree = Math.min(...map.towns.map((_, i) => degree[i]));
+  check("towns have real street junctions", minTownDegree >= 3, `min piazza degree ${minTownDegree}`);
+}
+
 // grade limit respected on every edge
 {
   let maxG = 0;

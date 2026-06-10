@@ -62,13 +62,14 @@ export function generateNetwork(seed: number, size: number, coastX: number): Net
     if (nodes.every((n) => Math.hypot(n.x - x, n.z - z) > 450)) nodes.push({ x, z });
   }
 
-  const junctionCount = Math.round(size / 380); // ~16 for 6 km
+  // dense countryside junctions -> plenty of forks to turn at
+  const junctionCount = Math.round(size / 250); // ~24 for 6 km
   attempts = 0;
-  while (nodes.length < towns.length + junctionCount && attempts < 800) {
+  while (nodes.length < towns.length + junctionCount && attempts < 1200) {
     attempts++;
     const x = coastX + 150 + rand() * (half - coastX - 250);
     const z = -half + 120 + rand() * (2 * half - 240);
-    if (nodes.every((n) => Math.hypot(n.x - x, n.z - z) > size * 0.11)) {
+    if (nodes.every((n) => Math.hypot(n.x - x, n.z - z) > size * 0.085)) {
       nodes.push({ x, z });
     }
   }
@@ -121,6 +122,51 @@ export function generateNetwork(seed: number, size: number, coastX: number): Net
     }
   }
 
+  // ---------- classify: main roads = the town-to-town backbone ----------
+  // every edge used by some shortest path between two towns becomes a
+  // two-lane "strada provinciale"; everything else is a narrow lane
+  {
+    const adj: { e: number; to: number; len: number }[][] = nodes.map(() => []);
+    edges.forEach((e, ei) => {
+      const len = Math.hypot(nodes[e.a].x - nodes[e.b].x, nodes[e.a].z - nodes[e.b].z);
+      adj[e.a].push({ e: ei, to: e.b, len });
+      adj[e.b].push({ e: ei, to: e.a, len });
+    });
+    const mainEdges = new Set<number>();
+    for (let t1 = 0; t1 < towns.length; t1++) {
+      // Dijkstra from town t1; mark path edges to every other town
+      const dist = nodes.map(() => Infinity);
+      const prevE = nodes.map(() => -1);
+      const prevN = nodes.map(() => -1);
+      dist[t1] = 0;
+      const seen = new Set<number>();
+      for (;;) {
+        let u = -1;
+        let best = Infinity;
+        for (let i = 0; i < nodes.length; i++) {
+          if (!seen.has(i) && dist[i] < best) { best = dist[i]; u = i; }
+        }
+        if (u < 0) break;
+        seen.add(u);
+        for (const { e, to, len } of adj[u]) {
+          if (dist[u] + len < dist[to]) {
+            dist[to] = dist[u] + len;
+            prevE[to] = e;
+            prevN[to] = u;
+          }
+        }
+      }
+      for (let t2 = t1 + 1; t2 < towns.length; t2++) {
+        let n = t2;
+        while (n !== t1 && prevE[n] >= 0) {
+          mainEdges.add(prevE[n]);
+          n = prevN[n];
+        }
+      }
+    }
+    edges.forEach((e, ei) => (e.kind = mainEdges.has(ei) ? "main" : "lane"));
+  }
+
   // ---------- curve the roads: jittered via points ----------
   for (const e of edges) {
     const a = nodes[e.a];
@@ -136,6 +182,28 @@ export function generateNetwork(seed: number, size: number, coastX: number): Net
         a.x + (b.x - a.x) * t + nx * wobble,
         a.z + (b.z - a.z) * t + nz * wobble,
       ]);
+    }
+  }
+
+  // ---------- real town street grids: inner nodes + narrow streets ----------
+  // bigger towns get more inner junctions; streets connect them to the
+  // piazza and to each other, so you can actually turn inside a town
+  for (let ti = 0; ti < towns.length; ti++) {
+    const town = towns[ti];
+    const innerCount = town.radius > 170 ? 5 : town.radius > 140 ? 3 : town.radius > 115 ? 2 : 1;
+    const innerIdx: number[] = [];
+    for (let i = 0; i < innerCount; i++) {
+      const a = (i / innerCount) * Math.PI * 2 + rand() * 0.9;
+      const r = town.radius * (0.45 + rand() * 0.3);
+      const n = { x: town.x + Math.cos(a) * r, z: town.z + Math.sin(a) * r };
+      innerIdx.push(nodes.length);
+      nodes.push(n);
+      // street to the piazza
+      edges.push({ a: ti, b: nodes.length - 1, via: [], kind: "lane" });
+    }
+    // ring connections between neighboring inner nodes
+    for (let i = 0; i + 1 < innerIdx.length; i++) {
+      if (rand() < 0.75) edges.push({ a: innerIdx[i], b: innerIdx[i + 1], via: [], kind: "lane" });
     }
   }
 

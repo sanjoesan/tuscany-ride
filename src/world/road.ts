@@ -5,14 +5,43 @@ import { Terrain, ROAD_HALF, type RoadSample } from "./terrain";
 const SAMPLE_STEP = 5; // meters between road samples
 const MAX_GRADE = 0.1; // roads never exceed 10 %
 const JUNCTION_R = 7.5; // junction pad radius
+const LANE_HALF = 2.2; // narrow single-lane country road half-width
 
 /** One road of the network, sampled a -> b. */
 export interface EdgePath {
   edge: number;
   a: number;
   b: number;
+  kind: "main" | "lane";
+  /** paved half-width */
+  half: number;
   samples: RoadSample[];
   length: number;
+}
+
+/** Interpolate along an edge path at distance s (clamped to the edge). */
+export function samplePath(
+  path: EdgePath,
+  s: number
+): { x: number; y: number; z: number; dirX: number; dirZ: number; grade: number } {
+  const samples = path.samples;
+  const n = samples.length;
+  const d = Math.max(0, Math.min(path.length, s));
+  let i = Math.min(n - 2, Math.floor((d / path.length) * (n - 1)));
+  while (i < n - 2 && samples[i + 1].dist < d) i++;
+  while (i > 0 && samples[i].dist > d) i--;
+  const a = samples[i];
+  const b = samples[i + 1];
+  const seg = b.dist - a.dist || 1;
+  const t = Math.min(1, Math.max(0, (d - a.dist) / seg));
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    z: a.z + (b.z - a.z) * t,
+    dirX: a.dirX + (b.dirX - a.dirX) * t,
+    dirZ: a.dirZ + (b.dirZ - a.dirZ) * t,
+    grade: a.grade + (b.grade - a.grade) * t,
+  };
 }
 
 /** Common lookup over a list of samples (used by Route). */
@@ -96,6 +125,8 @@ export class RoadNetwork {
 
     // sample every edge
     map.edges.forEach((e, ei) => {
+      const kind = e.kind ?? "main";
+      const half = kind === "lane" ? LANE_HALF : ROAD_HALF;
       const pts = [
         new THREE.Vector3(map.nodes[e.a].x, 0, map.nodes[e.a].z),
         ...e.via.map(([x, z]) => new THREE.Vector3(x, 0, z)),
@@ -182,9 +213,10 @@ export class RoadNetwork {
           grade: (hNext - hPrev) / dl,
           dirX: dx / dl,
           dirZ: dz / dl,
+          half,
         });
       }
-      const path: EdgePath = { edge: ei, a: e.a, b: e.b, samples, length: dist };
+      const path: EdgePath = { edge: ei, a: e.a, b: e.b, kind, half, samples, length: dist };
       this.paths.push(path);
       this.allSamples.push(...samples);
     });
@@ -216,10 +248,15 @@ export class RoadNetwork {
   buildMesh(): THREE.Group {
     const group = new THREE.Group();
     group.name = "road";
-    const asphaltTex = buildAsphaltTexture();
-    const ribbonMat = new THREE.MeshStandardMaterial({
-      map: asphaltTex,
+    const mainMat = new THREE.MeshStandardMaterial({
+      map: buildAsphaltTexture("main"),
       roughness: 0.92,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    });
+    const laneMat = new THREE.MeshStandardMaterial({
+      map: buildAsphaltTexture("lane"),
+      roughness: 0.96,
       metalness: 0,
       side: THREE.DoubleSide,
     });
@@ -230,11 +267,12 @@ export class RoadNetwork {
       const verts: number[] = [];
       const uvs: number[] = [];
       const idx: number[] = [];
+      const half = path.half;
       path.samples.forEach((s, i) => {
         const nx = -s.dirZ;
         const nz = s.dirX;
-        verts.push(s.x + nx * ROAD_HALF, s.y + 0.12, s.z + nz * ROAD_HALF);
-        verts.push(s.x - nx * ROAD_HALF, s.y + 0.12, s.z - nz * ROAD_HALF);
+        verts.push(s.x + nx * half, s.y + 0.12, s.z + nz * half);
+        verts.push(s.x - nx * half, s.y + 0.12, s.z - nz * half);
         uvs.push(0, s.dist / TILE_LEN, 1, s.dist / TILE_LEN);
         if (i < path.samples.length - 1) {
           const a = i * 2;
@@ -246,15 +284,22 @@ export class RoadNetwork {
       geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
       geo.setIndex(idx);
       geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, ribbonMat);
+      const mesh = new THREE.Mesh(geo, path.kind === "lane" ? laneMat : mainMat);
       mesh.receiveShadow = true;
       group.add(mesh);
     }
 
-    // junction pads on top so the line markings don't cross the junctions
-    const padGeo = new THREE.CircleGeometry(JUNCTION_R, 22);
-    padGeo.rotateX(-Math.PI / 2);
+    // junction pads on top so the line markings don't cross the junctions;
+    // size follows the widest road that meets there
     this.map.nodes.forEach((node, ni) => {
+      let maxHalf = 0;
+      for (const p of this.paths) {
+        if (p.a === ni || p.b === ni) maxHalf = Math.max(maxHalf, p.half);
+      }
+      if (maxHalf === 0) return;
+      const r = maxHalf >= ROAD_HALF ? JUNCTION_R : 5.2;
+      const padGeo = new THREE.CircleGeometry(r, 22);
+      padGeo.rotateX(-Math.PI / 2);
       const pad = new THREE.Mesh(padGeo, padMat);
       pad.position.set(node.x, this.nodeY[ni] + 0.18, node.z);
       pad.receiveShadow = true;
@@ -265,23 +310,23 @@ export class RoadNetwork {
 }
 
 /**
- * 512x512 asphalt tile. u spans the 7 m road width, v spans 14 m of length.
- * Painted: dark aggregate grain, slightly worn wheel tracks, white edge
- * lines and a dashed center line.
+ * 512x512 asphalt tile; v spans 14 m of length. "main" roads get edge lines,
+ * wheel tracks and a dashed center line; "lane" roads are narrower, more
+ * worn and unmarked - typical Tuscan country lanes.
  */
-function buildAsphaltTexture(): THREE.CanvasTexture {
+function buildAsphaltTexture(kind: "main" | "lane"): THREE.CanvasTexture {
   const S = 512;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext("2d")!;
 
-  ctx.fillStyle = "#37373b";
+  ctx.fillStyle = kind === "main" ? "#37373b" : "#4a453d";
   ctx.fillRect(0, 0, S, S);
 
   const img = ctx.getImageData(0, 0, S, S);
   for (let i = 0; i < img.data.length; i += 4) {
     const px = (i / 4) % S;
-    const n = (Math.random() - 0.5) * 26;
+    const n = (Math.random() - 0.5) * (kind === "main" ? 26 : 38);
     const u = px / S;
     const track =
       -10 * Math.exp(-((u - 0.3) ** 2) / 0.004) - 10 * Math.exp(-((u - 0.7) ** 2) / 0.004);
@@ -291,10 +336,19 @@ function buildAsphaltTexture(): THREE.CanvasTexture {
   }
   ctx.putImageData(img, 0, 0);
 
-  ctx.fillStyle = "rgba(230, 228, 220, 0.85)";
-  ctx.fillRect(Math.round(S * 0.025), 0, Math.round(S * 0.018), S);
-  ctx.fillRect(Math.round(S * 0.957), 0, Math.round(S * 0.018), S);
-  ctx.fillRect(Math.round(S * 0.491), 0, Math.round(S * 0.018), Math.round(S * 0.29));
+  if (kind === "main") {
+    ctx.fillStyle = "rgba(230, 228, 220, 0.85)";
+    ctx.fillRect(Math.round(S * 0.025), 0, Math.round(S * 0.018), S);
+    ctx.fillRect(Math.round(S * 0.957), 0, Math.round(S * 0.018), S);
+    ctx.fillRect(Math.round(S * 0.491), 0, Math.round(S * 0.018), Math.round(S * 0.29));
+  } else {
+    // crumbling edges + center grass strip hint on the most rural lanes
+    for (let y = 0; y < S; y += 3) {
+      ctx.fillStyle = `rgba(86, 80, 60, ${0.25 + Math.random() * 0.3})`;
+      ctx.fillRect(0, y, 6 + Math.random() * 12, 3);
+      ctx.fillRect(S - 6 - Math.random() * 12, y, 18, 3);
+    }
+  }
 
   for (let i = 0; i < 600; i++) {
     ctx.fillStyle = `rgba(55, 55, 59, ${Math.random() * 0.5})`;

@@ -9,11 +9,12 @@ export class VirtualTrainer {
   cadence = 85;
   private timer: number | null = null;
   private onData: (t: Partial<Telemetry>) => void;
+  // left/right arrows belong to turning now; +/- adjust cadence if needed
   private keyHandler = (e: KeyboardEvent) => {
     if (e.key === "ArrowUp") this.targetPower = Math.min(900, this.targetPower + 10);
     else if (e.key === "ArrowDown") this.targetPower = Math.max(0, this.targetPower - 10);
-    else if (e.key === "ArrowRight") this.cadence = Math.min(130, this.cadence + 2);
-    else if (e.key === "ArrowLeft") this.cadence = Math.max(0, this.cadence - 2);
+    else if (e.key === "+") this.cadence = Math.min(130, this.cadence + 2);
+    else if (e.key === "-") this.cadence = Math.max(0, this.cadence - 2);
     else return;
     e.preventDefault();
   };

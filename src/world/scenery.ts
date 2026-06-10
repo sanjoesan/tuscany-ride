@@ -5,7 +5,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { MapData, SceneryType } from "../types";
 import { Terrain, smoothstep } from "./terrain";
 import { mulberry32, Noise2D } from "./noise";
-import { buildModel, modelMaterial } from "./models";
+import { buildModel, modelMaterial, NIGHT_GLOW_MATERIAL } from "./models";
 
 interface Placement {
   x: number;
@@ -109,6 +109,29 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
     }
   }
 
+  // ---------- lone houses and small farmsteads along the country roads ----------
+  const allSamples = terrain.getRoadSamples();
+  for (let i = 0; i < allSamples.length; i += 26) {
+    const s = allSamples[i];
+    if (s.x < map.coastX + 80 || inTown(s.x, s.z, 30)) continue;
+    if (rand() > 0.3) continue;
+    const side = rand() < 0.5 ? 1 : -1;
+    const off = 14 + rand() * 8;
+    const hx = s.x - s.dirZ * off * side;
+    const hz = s.z + s.dirX * off * side;
+    if (blocked(hx, hz, 11)) continue;
+    const r = rand();
+    const type: SceneryType = r < 0.55 ? "house" : r < 0.8 ? "villa" : "barn";
+    // face the road
+    const rot = Math.atan2(s.dirX * side, s.dirZ * side) + Math.PI;
+    put(type, { x: hx, z: hz, rot, scale: 0.9 + rand() * 0.2 });
+    if (rand() < 0.6) {
+      const cx2 = hx + (rand() - 0.5) * 18;
+      const cz2 = hz + (rand() - 0.5) * 18;
+      if (!blocked(cx2, cz2, 5)) put(rand() < 0.5 ? "cypress" : "olive", { x: cx2, z: cz2, rot: rand() * 6.28, scale: 1 });
+    }
+  }
+
   // ---------- towns ----------
   for (const town of map.towns) {
     buildTown(town, terrain, rand, put, blocked);
@@ -163,14 +186,19 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
     for (let v = 0; v < variants; v++) {
       const sub = list.filter((_, i) => i % variants === v);
       if (sub.length === 0) continue;
-      const inst = new THREE.InstancedMesh(buildModel(type), modelMaterial(type), sub.length);
+      const model = buildModel(type);
+      const inst = new THREE.InstancedMesh(model.geo, modelMaterial(type), sub.length);
       inst.name = `inst-${type}-${v}`;
+      const glowInst = model.glow
+        ? new THREE.InstancedMesh(model.glow, NIGHT_GLOW_MATERIAL, sub.length)
+        : null;
       sub.forEach((p, i) => {
         dummy.position.set(p.x, terrain.height(p.x, p.z) - 0.1, p.z);
         dummy.rotation.set(0, p.rot, 0);
         dummy.scale.setScalar(p.scale);
         dummy.updateMatrix();
         inst.setMatrixAt(i, dummy.matrix);
+        glowInst?.setMatrixAt(i, dummy.matrix);
         // natural variation so no two plants / houses look identical
         if (vegetate) {
           const b = 0.72 + rand() * 0.36;
@@ -186,6 +214,7 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
       inst.castShadow = true;
       inst.receiveShadow = true;
       group.add(inst);
+      if (glowInst) group.add(glowInst);
     }
   }
   // ---------- grass tufts near the roads ----------
@@ -498,6 +527,9 @@ export class Environment {
     this.envSky.material.uniforms.sunPosition.value.copy(skySun);
 
     const dayness = Math.max(0, Math.min(1, elDeg / 25)); // 0 night .. 1 high sun
+    // windows & lanterns light up at dusk and stay lit through the night
+    const glowFactor = elDeg <= 2 ? 1 : elDeg < 14 ? (14 - elDeg) / 12 : 0;
+    NIGHT_GLOW_MATERIAL.emissiveIntensity = 2.6 * glowFactor;
     if (night) {
       this.sun.intensity = 0.55;
       this.sun.color.set(0x8fa8cf); // moonlight
