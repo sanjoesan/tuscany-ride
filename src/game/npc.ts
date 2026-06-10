@@ -28,11 +28,17 @@ interface Vehicle {
   pathIdx: number;
   reverse: boolean;
   s: number;
+  /** cruising speed m/s */
   speed: number;
+  /** current speed (slows behind riders before overtaking) */
+  curSpeed: number;
+  /** lateral offset from the centerline (1.9 = own lane, ~4 = overtaking) */
+  lane: number;
 }
 
 interface Pedestrian {
   object: THREE.Group;
+  limbs: { legL: THREE.Object3D | null; legR: THREE.Object3D | null; armL: THREE.Object3D; armR: THREE.Object3D };
   town: number;
   target: THREE.Vector2;
   speed: number;
@@ -86,31 +92,35 @@ export class NpcManager {
         const { object, wheels } = isTruck ? buildTruck(rand) : buildCar(rand);
         const pathIdx = Math.floor(rand() * paths.length);
         this.group.add(object);
+        const speed = (isTruck ? 11 : 14) + rand() * 4; // ~40-65 km/h
         this.vehicles.push({
           object,
           wheels,
           pathIdx,
           reverse: rand() < 0.5,
           s: rand() * paths[pathIdx].length,
-          speed: (isTruck ? 11 : 14) + rand() * 4, // ~40-65 km/h
+          speed,
+          curSpeed: speed,
+          lane: 1.9,
         });
       }
     }
 
     // ---------- pedestrians ----------
     this.world.map.towns.forEach((town, ti) => {
-      const count = Math.round(town.radius / 22); // ~5-8 per town
+      const count = Math.round(town.radius / 16); // ~8-13 per town
       for (let i = 0; i < count; i++) {
-        const object = buildPedestrian(rand);
+        const { object, limbs } = buildPedestrian(rand);
         this.group.add(object);
         const a = rand() * Math.PI * 2;
         const r = rand() * town.radius * 0.8;
         object.position.set(town.x + Math.cos(a) * r, 0, town.z + Math.sin(a) * r);
         this.pedestrians.push({
           object,
+          limbs,
           town: ti,
           target: new THREE.Vector2(town.x, town.z),
-          speed: 1.0 + rand() * 0.7,
+          speed: 0.9 + rand() * 0.8,
           phase: rand() * 6.28,
         });
       }
@@ -126,7 +136,7 @@ export class NpcManager {
     this.pedestrians = [];
   }
 
-  update(dt: number, t: number): void {
+  update(dt: number, t: number, player: { pos: THREE.Vector3; speed: number } | null = null): void {
     const network = this.world.network;
 
     // ---------- riders follow their route, slowed by gradients ----------
@@ -138,8 +148,10 @@ export class NpcManager {
       const factor = Math.max(0.3, Math.min(1.6, 1 - at.grade * 9));
       const v = r.cruise * factor;
       r.dist += v * dt;
-      const right = new THREE.Vector3(at.dir.z, 0, -at.dir.x);
-      r.rider.object.position.copy(at.pos).addScaledVector(right, 1.3);
+      // right = forward x up (Europe rides on the right)
+      r.rider.object.position
+        .copy(at.pos)
+        .addScaledVector(new THREE.Vector3(-at.dir.z, 0, at.dir.x), 1.3);
       r.rider.object.position.y += 0.12;
       r.rider.object.rotation.set(0, Math.atan2(-at.dir.z, at.dir.x), 0);
       r.rider.object.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.atan(at.grade));
@@ -147,11 +159,42 @@ export class NpcManager {
       r.rider.update(dt, v, v > 1 ? 82 : 0);
     }
 
-    // ---------- vehicles drive the network ----------
+    // ---------- vehicles drive the network (and overtake riders) ----------
     for (const v of this.vehicles) {
       const path = network.paths[v.pathIdx];
       if (!path) continue;
-      v.s += v.speed * dt;
+
+      const pos = samplePath(path, v.reverse ? path.length - v.s : v.s);
+      const dirX = v.reverse ? -pos.dirX : pos.dirX;
+      const dirZ = v.reverse ? -pos.dirZ : pos.dirZ;
+
+      // look ahead for cyclists in our lane: slow down, pull left to pass,
+      // then merge back - like a real driver
+      let laneTarget = 1.9;
+      let speedTarget = v.speed;
+      const consider = (rp: THREE.Vector3, rSpeed: number) => {
+        // measured from the road centerline so the check is stable while
+        // the car itself swings out
+        const dx = rp.x - pos.x;
+        const dz = rp.z - pos.z;
+        const ahead = dx * dirX + dz * dirZ; // along travel
+        const lateral = dx * -dirZ + dz * dirX; // + = right of travel
+        const inOurLane = lateral > -0.5 && lateral < 3.6;
+        if (inOurLane && ahead > -8 && ahead < 30) {
+          laneTarget = -1.5; // cross the centerline to pass
+          if (ahead > 4 && v.lane > 0.2) {
+            // not pulled out yet - hang back behind the rider
+            speedTarget = Math.min(speedTarget, Math.max(rSpeed * 0.9, 3));
+          }
+        }
+      };
+      if (player) consider(player.pos, player.speed);
+      for (const r of this.riders) consider(r.rider.object.position, r.cruise);
+
+      v.lane += (laneTarget - v.lane) * Math.min(1, dt * 1.8);
+      v.curSpeed += (speedTarget - v.curSpeed) * Math.min(1, dt * 2.2);
+      v.s += v.curSpeed * dt;
+
       if (v.s >= path.length) {
         // junction reached: pick the next road
         const node = v.reverse ? path.a : path.b;
@@ -172,14 +215,16 @@ export class NpcManager {
         }
         continue;
       }
-      const pos = samplePath(path, v.reverse ? path.length - v.s : v.s);
-      const dirX = v.reverse ? -pos.dirX : pos.dirX;
-      const dirZ = v.reverse ? -pos.dirZ : pos.dirZ;
-      // right-hand traffic: offset to the right of the travel direction
-      v.object.position.set(pos.x + dirZ * 1.9, pos.y + 0.12, pos.z - dirX * 1.9);
+
+      // right-hand traffic: right = forward x up = (-dirZ, dirX)
+      v.object.position.set(
+        pos.x - dirZ * v.lane,
+        pos.y + 0.12,
+        pos.z + dirX * v.lane
+      );
       v.object.rotation.set(0, Math.atan2(-dirZ, dirX), 0);
       v.object.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.atan(v.reverse ? -pos.grade : pos.grade));
-      const spin = v.speed / 0.34;
+      const spin = v.curSpeed / 0.34;
       for (const w of v.wheels) w.rotation.z -= spin * dt;
     }
 
@@ -202,9 +247,14 @@ export class NpcManager {
       p.object.position.z += vz * dt;
       p.object.position.y = this.world.terrain.height(p.object.position.x, p.object.position.z);
       p.object.rotation.y = Math.atan2(vx, vz);
-      // walking bob
-      p.object.position.y += Math.abs(Math.sin(t * 4 + p.phase)) * 0.05;
-      p.object.rotation.z = Math.sin(t * 4 + p.phase) * 0.04;
+      // proper walk: legs and arms swing in opposite phase + a slight bob
+      p.phase += dt * p.speed * 3.4;
+      const swing = Math.sin(p.phase);
+      if (p.limbs.legL) p.limbs.legL.rotation.x = swing * 0.55;
+      if (p.limbs.legR) p.limbs.legR.rotation.x = -swing * 0.55;
+      p.limbs.armL.rotation.x = -swing * 0.45;
+      p.limbs.armR.rotation.x = swing * 0.45;
+      p.object.position.y += Math.abs(Math.sin(p.phase)) * 0.035;
     }
   }
 }
@@ -336,27 +386,95 @@ function buildTruck(rand: () => number): { object: THREE.Group; wheels: THREE.Me
   return { object: g, wheels };
 }
 
-function buildPedestrian(rand: () => number): THREE.Group {
-  const g = new THREE.Group();
-  const shirt = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(rand(), 0.5 + rand() * 0.3, 0.5),
-    roughness: 0.8,
-  });
-  const pants = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(0.6, 0.25, 0.2 + rand() * 0.3),
-    roughness: 0.8,
-  });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xd9a47e, roughness: 0.7 });
+const SKIN_TONES = [0xe8c39e, 0xd9a47e, 0xc98e66, 0xa66a44, 0x8d5524];
 
-  const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.78, 8), pants);
-  legs.position.y = 0.39;
-  g.add(legs);
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.62, 8), shirt);
-  torso.position.y = 1.08;
+/** Articulated villager: swinging arms/legs, dresses, hats, varied colors. */
+function buildPedestrian(rand: () => number): {
+  object: THREE.Group;
+  limbs: { legL: THREE.Object3D | null; legR: THREE.Object3D | null; armL: THREE.Object3D; armR: THREE.Object3D };
+} {
+  const g = new THREE.Group();
+  const isWoman = rand() < 0.5;
+  const shirtColor = new THREE.Color().setHSL(rand(), 0.45 + rand() * 0.35, 0.42 + rand() * 0.25);
+  const shirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.85 });
+  const pants = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(0.58 + rand() * 0.1, 0.2 + rand() * 0.2, 0.2 + rand() * 0.25),
+    roughness: 0.85,
+  });
+  const skin = new THREE.MeshStandardMaterial({
+    color: SKIN_TONES[Math.floor(rand() * SKIN_TONES.length)],
+    roughness: 0.7,
+  });
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: rand() < 0.25 ? 0xbfb6a8 : new THREE.Color().setHSL(0.08, 0.4, 0.08 + rand() * 0.25),
+    roughness: 0.9,
+  });
+
+  let legL: THREE.Object3D | null = null;
+  let legR: THREE.Object3D | null = null;
+
+  if (isWoman && rand() < 0.7) {
+    // dress: cone skirt, no visible legs
+    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.95, 10), shirt);
+    skirt.position.y = 0.55;
+    g.add(skirt);
+  } else {
+    // hip-pivoting legs
+    for (const side of [1, -1]) {
+      const hip = new THREE.Group();
+      hip.position.set(0.09 * side, 0.82, 0);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.8, 7), pants);
+      leg.position.y = -0.4;
+      hip.add(leg);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.24), pants);
+      shoe.position.set(0, -0.8, 0.05);
+      hip.add(shoe);
+      g.add(hip);
+      if (side === 1) legL = hip;
+      else legR = hip;
+    }
+  }
+
+  // torso with shoulders
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.17, isWoman ? 0.15 : 0.19, 0.55, 9), shirt);
+  torso.position.y = 1.12;
   g.add(torso);
-  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), skin);
-  head.position.y = 1.55;
+
+  // shoulder-pivoting arms with skin hands
+  const mkArm = (side: number): THREE.Group => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(0.23 * side, 1.36, 0);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.55, 6), shirt);
+    arm.position.y = -0.26;
+    shoulder.add(arm);
+    const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 1), skin);
+    hand.position.y = -0.56;
+    shoulder.add(hand);
+    g.add(shoulder);
+    return shoulder;
+  };
+  const armL = mkArm(1);
+  const armR = mkArm(-1);
+
+  // head, hair / hat
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.125, 1), skin);
+  head.position.y = 1.56;
   g.add(head);
+  if (rand() < 0.3) {
+    // sun hat
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.03, 12), hairMat);
+    brim.position.y = 1.66;
+    g.add(brim);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.1, 10), hairMat);
+    top.position.y = 1.72;
+    g.add(top);
+  } else {
+    const hair = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), hairMat);
+    hair.scale.set(1, 0.75, 1);
+    hair.position.y = 1.62;
+    g.add(hair);
+  }
+
   g.traverse((o) => (o.castShadow = true));
-  return g;
+  return { object: g, limbs: { legL, legR, armL, armR } };
 }

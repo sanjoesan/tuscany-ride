@@ -87,7 +87,8 @@ export class RideController {
     this.rideTime += dt;
 
     // rider pose: in the right-hand lane, facing travel direction, tilted with the slope
-    const right = new THREE.Vector3(at.dir.z, 0, -at.dir.x);
+    // (right = forward x up; Europe drives on the right)
+    const right = new THREE.Vector3(-at.dir.z, 0, at.dir.x);
     const pos = at.pos.clone().addScaledVector(right, 1.4);
     pos.y += 0.12; // asphalt sits slightly above the sampled centerline
     this.rider.object.position.copy(pos);

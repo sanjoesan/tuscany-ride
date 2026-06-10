@@ -29,11 +29,11 @@ export function generateNetwork(seed: number, size: number, coastX: number): Net
   const towns: TownData[] = [];
   const nameOffset = Math.floor(rand() * TOWN_NAMES.length);
 
-  // one harbour town at the coast
+  // one harbour town at the coast (the biggest)
   towns.push({
-    x: coastX + 180,
+    x: coastX + 200,
     z: (rand() - 0.5) * half,
-    radius: 130 + rand() * 40,
+    radius: 170 + rand() * 50,
     name: TOWN_NAMES[nameOffset % TOWN_NAMES.length],
   });
   // the rest spread inland with minimum spacing
@@ -45,7 +45,7 @@ export function generateNetwork(seed: number, size: number, coastX: number): Net
     if (towns.every((t) => Math.hypot(t.x - x, t.z - z) > size * 0.24)) {
       towns.push({
         x, z,
-        radius: 95 + rand() * 60,
+        radius: 115 + rand() * 80,
         name: TOWN_NAMES[(nameOffset + towns.length) % TOWN_NAMES.length],
       });
     }

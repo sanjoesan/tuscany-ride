@@ -8,7 +8,12 @@ export type SceneryType =
   | "villa"
   | "barn"
   | "church"
-  | "tower";
+  | "tower"
+  | "fountain"
+  | "statue"
+  | "stall"
+  | "lamp"
+  | "bench";
 
 export interface SceneryItem {
   type: SceneryType;

@@ -284,9 +284,14 @@ export class Terrain {
       out.setRGB(pal.olive[0] + v, pal.olive[1] + v, pal.olive[2] + v); // olive grove ground
     }
 
-    // towns get warm stone paving
+    // towns get warm stone paving; the piazza a pale circular cobble pattern
     for (const town of m.towns) {
       const dt = Math.hypot(x - town.x, z - town.z);
+      if (dt < 30) {
+        const ring = Math.sin(dt * 1.15) * 0.03; // concentric cobble bands
+        out.setRGB(0.63 + grain + ring, 0.58 + grain + ring, 0.49 + grain + ring);
+        return;
+      }
       if (dt < town.radius) {
         const f = 1 - smoothstep(town.radius * 0.7, town.radius, dt);
         out.lerp(new THREE.Color(0.55 + grain, 0.48 + grain, 0.4 + grain), f * 0.85);

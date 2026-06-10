@@ -78,7 +78,7 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
       const off = 6 + rand() * 2;
       const px = s.x + nx * off;
       const pz = s.z + nz * off;
-      if (!inTown(px, pz, 4)) {
+      if (!inTown(px, pz, 4) && !blocked(px, pz, 5)) {
         put("cypress", { x: px, z: pz, rot: rand() * 6.28, scale: 0.85 + rand() * 0.5 });
       }
     }
@@ -103,7 +103,9 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
     const rot = rand() * 6.28;
     put(rand() < 0.5 ? "villa" : "barn", { x, z, rot, scale: 1 });
     for (let c = 0; c < 4; c++) {
-      put("cypress", { x: x + Math.cos(rot) * (10 + c * 4), z: z + Math.sin(rot) * (10 + c * 4), rot: 0, scale: 1 + rand() * 0.3 });
+      const cxp = x + Math.cos(rot) * (10 + c * 4);
+      const czp = z + Math.sin(rot) * (10 + c * 4);
+      if (!blocked(cxp, czp, 5)) put("cypress", { x: cxp, z: czp, rot: 0, scale: 1 + rand() * 0.3 });
     }
   }
 
@@ -112,7 +114,7 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
     buildTown(town, terrain, rand, put, blocked);
   }
 
-  // ---------- streets: houses lining the roads inside towns ----------
+  // ---------- streets: houses + lamps lining the roads inside towns ----------
   const roadSamples = terrain.getRoadSamples();
   for (let i = 0; i < roadSamples.length; i += 4) {
     const s = roadSamples[i];
@@ -124,13 +126,21 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
       if (rand() > 0.62) continue;
       const nx = -s.dirZ * side;
       const nz = s.dirX * side;
-      const off = 9.5 + rand() * 2.5;
+      // house depth can reach ~5.5 m from its center: keep fronts off the asphalt
+      const off = 11.5 + rand() * 2.5;
       const hx = s.x + nx * off;
       const hz = s.z + nz * off;
-      if (blocked(hx, hz, 8)) continue;
+      if (blocked(hx, hz, 9.5)) continue;
       // face the street
       const rot = Math.atan2(-nz, -nx) + Math.PI / 2;
-      put("house", { x: hx, z: hz, rot, scale: 0.85 + rand() * 0.35 });
+      put("house", { x: hx, z: hz, rot, scale: 0.8 + rand() * 0.2 });
+    }
+    // street lamps every ~24 m, alternating sides
+    if (i % 20 === 0) {
+      const side = (i / 20) % 2 === 0 ? 1 : -1;
+      const lx = s.x - s.dirZ * 5.4 * side;
+      const lz = s.z + s.dirX * 5.4 * side;
+      if (!blocked(lx, lz, 4.6)) put("lamp", { x: lx, z: lz, rot: 0, scale: 1 });
     }
   }
 
@@ -149,7 +159,7 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
   for (const [type, list] of buckets) {
     const vegetate = VEGETATION.includes(type);
     const building = BUILDINGS.includes(type);
-    const variants = type === "house" ? 5 : vegetate ? 4 : 1;
+    const variants = type === "house" ? 5 : vegetate ? 4 : type === "stall" ? 3 : 1;
     for (let v = 0; v < variants; v++) {
       const sub = list.filter((_, i) => i % variants === v);
       if (sub.length === 0) continue;
@@ -289,7 +299,50 @@ function buildTown(
   const churchAngle = rand() * 6.28;
   const cx = tx + Math.cos(churchAngle) * radius * 0.3;
   const cz = tz + Math.sin(churchAngle) * radius * 0.3;
-  if (!blocked(cx, cz, 14)) put("church", { x: cx, z: cz, rot: churchAngle + Math.PI, scale: radius > 110 ? 1 : 0.8 });
+  if (!blocked(cx, cz, 17)) put("church", { x: cx, z: cz, rot: churchAngle + Math.PI, scale: radius > 110 ? 1 : 0.8 });
+
+  // ---------- piazza life: fountain, statue, market, benches ----------
+  // fountain near the center (kept off the through-roads)
+  const fa = churchAngle + Math.PI * (0.6 + rand() * 0.8);
+  const fx = tx + Math.cos(fa) * 16;
+  const fz = tz + Math.sin(fa) * 16;
+  if (!blocked(fx, fz, 7)) put("fountain", { x: fx, z: fz, rot: rand() * 6.28, scale: radius > 140 ? 1.1 : 0.85 });
+
+  // statue for the bigger towns
+  if (radius > 130) {
+    const sa = fa + Math.PI * 0.5;
+    const sx = tx + Math.cos(sa) * 24;
+    const sz = tz + Math.sin(sa) * 24;
+    if (!blocked(sx, sz, 5)) put("statue", { x: sx, z: sz, rot: sa + Math.PI, scale: 1 });
+  }
+
+  // market: rows of striped stalls on the piazza of larger towns
+  if (radius > 120) {
+    const ma = fa + Math.PI; // market square opposite the fountain
+    const mcx = tx + Math.cos(ma) * 34;
+    const mcz = tz + Math.sin(ma) * 34;
+    const rows = radius > 160 ? 3 : 2;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < 3; col++) {
+        const ox = (col - 1) * 7;
+        const oz = (row - (rows - 1) / 2) * 8;
+        const x = mcx + Math.cos(ma) * oz - Math.sin(ma) * ox;
+        const z = mcz + Math.sin(ma) * oz + Math.cos(ma) * ox;
+        if (!blocked(x, z, 6) && rand() < 0.85) {
+          put("stall", { x, z, rot: ma + Math.PI / 2, scale: 0.95 + rand() * 0.15 });
+        }
+      }
+    }
+  }
+
+  // benches around the piazza
+  for (let b = 0; b < Math.round(radius / 30); b++) {
+    const ba = rand() * 6.28;
+    const br = 20 + rand() * 14;
+    const bx = tx + Math.cos(ba) * br;
+    const bz = tz + Math.sin(ba) * br;
+    if (!blocked(bx, bz, 5)) put("bench", { x: bx, z: bz, rot: ba + Math.PI / 2, scale: 1 });
+  }
 
   // houses in rough rings around the center - dense italian old town
   const rings = Math.max(2, Math.round(radius / 38));
@@ -302,9 +355,9 @@ function buildTown(
       const hx = tx + Math.cos(a) * hr;
       const hz = tz + Math.sin(a) * hr;
       if (Math.hypot(hx - cx, hz - cz) < 18) continue; // keep the piazza clear
-      if (blocked(hx, hz, 8)) continue;
+      if (blocked(hx, hz, 10)) continue;
       if (rand() < 0.88) {
-        put("house", { x: hx, z: hz, rot: a + Math.PI / 2 + (rand() - 0.5) * 0.2, scale: 0.85 + rand() * 0.4 });
+        put("house", { x: hx, z: hz, rot: a + Math.PI / 2 + (rand() - 0.5) * 0.2, scale: 0.85 + rand() * 0.3 });
       }
     }
   }

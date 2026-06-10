@@ -216,6 +216,72 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
         box(6, 1.4, 6, 0x9a8e78, 0, 16, 0),
         cone(3.4, 3, TERRACOTTA2, 0, 17.4, 0, 4),
       ]);
+
+    case "fountain":
+      // renaissance piazza fountain: basin, water, column with upper bowl
+      return mergeAll([
+        cyl(2.3, 2.5, 0.85, STONE, 0, 0, 0, 12),
+        cyl(2.0, 2.0, 0.12, 0x4d7e9c, 0, 0.62, 0, 12), // water
+        cyl(0.28, 0.34, 1.7, STONE, 0, 0.6, 0, 8),
+        cyl(0.95, 0.7, 0.3, STONE, 0, 2.2, 0, 10), // upper bowl
+        cyl(0.78, 0.78, 0.08, 0x5d8eac, 0, 2.42, 0, 10), // upper water
+        cone(0.22, 0.6, STONE, 0, 2.5, 0, 6), // finial
+      ]);
+
+    case "statue": {
+      // weathered bronze figure on a stone pedestal, arm raised
+      const BRONZE = 0x5e7563;
+      const arm = cyl(0.07, 0.09, 0.85, BRONZE, 0, 0, 0, 5);
+      arm.rotateZ(-0.85);
+      arm.translate(0.28, 2.9, 0);
+      return mergeAll([
+        box(1.5, 0.5, 1.5, 0x9a8e78),
+        box(1.1, 1.3, 1.1, STONE, 0, 0.5, 0),
+        cyl(0.22, 0.3, 1.5, BRONZE, 0, 1.8, 0, 7), // body/cloak
+        blob(0.19, BRONZE, 0, 3.5, 0, 1),
+        arm,
+      ]);
+    }
+
+    case "stall": {
+      // market stall with striped awning (random color pair per variant)
+      const AWNINGS: [number, number][] = [
+        [0xc0392b, 0xf2eee4], [0x2e7d4f, 0xf2eee4], [0x2a5d8f, 0xf2eee4], [0xd4842a, 0xf2eee4],
+      ];
+      const [c1, c2] = AWNINGS[Math.floor(Math.random() * AWNINGS.length)];
+      const parts: THREE.BufferGeometry[] = [
+        box(1.9, 0.95, 2.6, 0x8a6a42), // counter
+        box(1.6, 0.25, 2.2, 0xb0884f, 0, 0.95, 0), // goods
+      ];
+      for (const [px, pz] of [[-1, -1.4], [1, -1.4], [-1, 1.4], [1, 1.4]]) {
+        parts.push(cyl(0.05, 0.05, 2.3, 0x6e4f2e, px, 0, pz, 5));
+      }
+      // slanted awning out of alternating slats
+      for (let i = 0; i < 6; i++) {
+        const slat = box(2.6, 0.06, 0.52, i % 2 === 0 ? c1 : c2, 0, 0, 0);
+        slat.rotateX(0.28);
+        slat.translate(0, 2.3 + i * 0.013, -1.45 + i * 0.5);
+        parts.push(slat);
+      }
+      return mergeAll(parts);
+    }
+
+    case "lamp":
+      // iron street lamp with a warm lantern
+      return mergeAll([
+        cyl(0.16, 0.22, 0.35, 0x2c2c30, 0, 0, 0, 8),
+        cyl(0.06, 0.08, 3.1, 0x2c2c30, 0, 0.3, 0, 6),
+        box(0.3, 0.42, 0.3, 0xffedb8, 0, 3.4, 0), // lantern glass
+        cone(0.28, 0.25, 0x2c2c30, 0, 3.82, 0, 4),
+      ]);
+
+    case "bench":
+      return mergeAll([
+        box(1.8, 0.1, 0.45, 0x8a6a42, 0, 0.45, 0),
+        box(1.8, 0.5, 0.09, 0x8a6a42, 0, 0.55, -0.22),
+        box(0.12, 0.45, 0.4, 0x55565c, -0.75, 0, 0),
+        box(0.12, 0.45, 0.4, 0x55565c, 0.75, 0, 0),
+      ]);
   }
 }
 

@@ -84,6 +84,12 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 - [x] Dev hashes: #route=N, #time=night, #season=autumn (plus #autoride=S, #noui, cam2)
 - [x] Bike lights: front/rear lamps on all bikes (emissive, bright at night), player gets a real
       SpotLight headlight beam; works in fpv via Rider.setBodyVisible (headlight stays on)
+- [x] v0.4: right-hand traffic actually right (the old "right" vector was left!); cars/trucks slow
+      behind riders, pull left across the centerline to overtake, merge back (lane logic measured
+      from road centerline). Bigger towns (harbour 170-220 m) with piazza cobbles, fountains,
+      statues, market stalls (striped awnings, 3 variants), benches, street lamps. Articulated
+      pedestrians (swinging arms/legs, dresses, hats, skin tones). Spawn margins fixed so houses/
+      trees never overlap the asphalt. New scenery types available in the editor.
 - [ ] Watch list: night maybe still dark (bumped moon 0.55), headless sea renders grey (check real GPU)
 
 **2026-06-10 (2)** - v0.2 pushed & deployed:

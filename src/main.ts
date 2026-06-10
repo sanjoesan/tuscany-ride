@@ -303,7 +303,15 @@ function animate(): void {
   const dt = Math.min(clock.getDelta(), 0.1);
   const t = clock.elapsedTime;
   world.update(t, camera.position);
-  if (mode !== "editor") npcs?.update(dt, t);
+  if (mode !== "editor") {
+    npcs?.update(
+      dt,
+      t,
+      mode === "riding" && ride
+        ? { pos: ride.rider.object.position, speed: ride.physics.v }
+        : null
+    );
+  }
 
   if (mode === "riding" && ride) {
     ride.update(dt);
