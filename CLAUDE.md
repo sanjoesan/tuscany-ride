@@ -68,6 +68,21 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-10 (6)** - v0.6 "living Tuscany" (loop mode active - user said keep building autonomously):
+- [x] River: seeded course hills->sea avoiding towns (MapData.river), strictly downhill water
+      profile, terrain carves the bed (cuts under roads), lush green banks + pebble bed painted,
+      water ribbon mesh; stone bridges auto-built where roads cross (deck/parapets/abutments)
+- [x] Italian signage: white town-entry plates (name, both travel directions, right side) +
+      blue junction signposts (nearest towns + km via Dijkstra; plates angled along their exit)
+- [x] Harbour at towns[0]: stone pier + platform, bollards, glowing lamp, 7 colorful fishing
+      boats, buoys
+- [x] Sheep flocks + cattle on pastures (instanced, blocked from roads/river/towns)
+- [x] Hay bales on wheat stubble (summer/autumn only)
+- [x] Telegraph poles + sagging wires along main roads (left side, instanced + LineSegments)
+- [x] Scenery placement now also avoids the river (riverBlocked in blocked())
+- [x] 31 smoke tests pass (4 new river checks); Chrome-verified: town streets look alive
+- [ ] Next loop iteration: birds, distant hill silhouette ring, verify bridge close-up, perf check
+
 **2026-06-10 (5)** - v0.5 free roam + real network:
 - [x] Free-ride mode (route picker entry "-1"): turn at junctions with arrow chooser UI
       (HUD #turn-ui, default = straightest exit), keyboard arrows + U/Backspace u-turn,

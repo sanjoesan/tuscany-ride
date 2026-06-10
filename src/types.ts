@@ -59,6 +59,8 @@ export interface MapData {
   towns: TownData[];
   nodes: RoadNode[];
   edges: RoadEdge[];
+  /** river control points, source (hills) -> mouth (sea); generated from seed */
+  river: [number, number][];
   /** manually placed scenery (world builder); procedural scenery is derived from seed */
   scenery: SceneryItem[];
 }

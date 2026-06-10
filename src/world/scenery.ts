@@ -2,10 +2,11 @@ import * as THREE from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { Water } from "three/examples/jsm/objects/Water.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import type { MapData, SceneryType } from "../types";
+import type { MapData, SceneryType, TownData } from "../types";
 import { Terrain, smoothstep } from "./terrain";
+import type { RoadNetwork } from "./road";
 import { mulberry32, Noise2D } from "./noise";
-import { buildModel, modelMaterial, NIGHT_GLOW_MATERIAL } from "./models";
+import { buildModel, modelMaterial, NIGHT_GLOW_MATERIAL, BUILDING_MATERIAL } from "./models";
 
 interface Placement {
   x: number;
@@ -18,7 +19,7 @@ interface Placement {
  * Populates the world: procedural vegetation/vineyards derived from the seed,
  * a generated Italian town, plus the manually placed items from the map.
  */
-export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
+export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwork): THREE.Group {
   const group = new THREE.Group();
   group.name = "scenery";
   const rand = mulberry32(map.seed * 31 + 7);
@@ -34,9 +35,14 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
     arr.push(p);
   };
 
+  const riverBlocked = (x: number, z: number, margin = 6): boolean => {
+    const nr = terrain.nearestRiver(x, z, margin + 14);
+    return nr !== null && nr.dist < nr.sample.half + margin;
+  };
   const blocked = (x: number, z: number, margin = 9): boolean => {
     const near = terrain.nearestRoad(x, z, margin);
-    return near !== null && near.dist < margin;
+    if (near !== null && near.dist < margin) return true;
+    return riverBlocked(x, z, Math.min(margin, 8));
   };
   const inTown = (x: number, z: number, extra = 0): boolean =>
     map.towns.some((t) => Math.hypot(x - t.x, z - t.z) < t.radius + extra);
@@ -221,6 +227,461 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
   const grass = buildGrass(map, terrain, rand);
   if (grass) group.add(grass);
 
+  // ---------- life & infrastructure ----------
+  group.add(buildSigns(map, terrain, network));
+  group.add(buildHarbour(map, terrain, rand));
+  group.add(buildAnimals(map, terrain, rand, blocked, inTown));
+  group.add(buildHayBales(map, terrain, rand, blocked, inTown));
+  group.add(buildTelegraphPoles(terrain, network, rand));
+
+  return group;
+}
+
+// ====================================================================
+// signs: town entry plates + junction direction signposts
+// ====================================================================
+
+const signTexCache = new Map<string, THREE.CanvasTexture>();
+
+function signTexture(text: string, kind: "town" | "dir"): THREE.CanvasTexture {
+  const key = `${kind}:${text}`;
+  const cached = signTexCache.get(key);
+  if (cached) return cached;
+  const W = 256;
+  const H = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  if (kind === "town") {
+    ctx.fillStyle = "#f4f2ec";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(4, 4, W - 8, H - 8);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 30px system-ui, sans-serif";
+  } else {
+    ctx.fillStyle = "#2a5d8f"; // blue italian direction sign
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#f4f2ec";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(3, 3, W - 6, H - 6);
+    ctx.fillStyle = "#f4f2ec";
+    ctx.font = "bold 26px system-ui, sans-serif";
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text.toUpperCase(), W / 2, H / 2 + 1);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  signTexCache.set(key, tex);
+  return tex;
+}
+
+const POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x707880, roughness: 0.6, metalness: 0.7 });
+
+function buildSigns(map: MapData, terrain: Terrain, network: RoadNetwork): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "signs";
+
+  // ---- town entry signs: where a road crosses a town boundary ----
+  for (const path of network.paths) {
+    for (const town of map.towns) {
+      for (let i = 1; i < path.samples.length; i++) {
+        const a = path.samples[i - 1];
+        const b = path.samples[i];
+        const da = Math.hypot(a.x - town.x, a.z - town.z);
+        const db = Math.hypot(b.x - town.x, b.z - town.z);
+        const bound = town.radius + 14;
+        const crossesIn = da > bound && db <= bound;
+        const crossesOut = da <= bound && db > bound;
+        if (!crossesIn && !crossesOut) continue;
+        // entering direction
+        const dirX = crossesIn ? b.dirX : -b.dirX;
+        const dirZ = crossesIn ? b.dirZ : -b.dirZ;
+        // sign on the right side of entering traffic
+        const sx = b.x - dirZ * (path.half + 2.4);
+        const sz = b.z + dirX * (path.half + 2.4);
+        const y = terrain.height(sx, sz);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), POLE_MAT);
+        pole.position.set(sx, y + 1.2, sz);
+        group.add(pole);
+        const board = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.4, 0.6),
+          new THREE.MeshStandardMaterial({ map: signTexture(town.name, "town"), side: THREE.DoubleSide, roughness: 0.7 })
+        );
+        board.position.set(sx, y + 2.45, sz);
+        board.rotation.y = Math.atan2(dirX, dirZ) + Math.PI;
+        board.castShadow = true;
+        group.add(board);
+      }
+    }
+  }
+
+  // ---- junction signposts: which towns lie down each exit ----
+  // shortest distance from every node to every town
+  const townDist: number[][] = map.towns.map((_, ti) => {
+    const dist = map.nodes.map(() => Infinity);
+    dist[ti] = 0;
+    const seen = new Set<number>();
+    for (;;) {
+      let u = -1;
+      let best = Infinity;
+      for (let i = 0; i < dist.length; i++) if (!seen.has(i) && dist[i] < best) { best = dist[i]; u = i; }
+      if (u < 0) break;
+      seen.add(u);
+      for (const p of network.paths) {
+        const to = p.a === u ? p.b : p.b === u ? p.a : -1;
+        if (to >= 0 && dist[u] + p.length < dist[to]) dist[to] = dist[u] + p.length;
+      }
+    }
+    return dist;
+  });
+
+  map.nodes.forEach((node, ni) => {
+    const exits = network.paths
+      .map((p, pi) => ({ p, pi }))
+      .filter(({ p }) => p.a === ni || p.b === ni);
+    if (exits.length < 3) return; // signposts only at real junctions
+    // collect plates: nearest town reachable via each exit (if it's on the shortest path)
+    const plates: { text: string; yaw: number }[] = [];
+    for (const { p } of exits) {
+      const other = p.a === ni ? p.b : p.a;
+      let bestTown = -1;
+      let bestD = Infinity;
+      map.towns.forEach((_, ti) => {
+        if (ti === ni) return;
+        const viaExit = p.length + townDist[ti][other];
+        if (Math.abs(viaExit - townDist[ti][ni]) < 1 && townDist[ti][ni] < bestD && townDist[ti][ni] > 200) {
+          bestD = townDist[ti][ni];
+          bestTown = ti;
+        }
+      });
+      if (bestTown >= 0 && plates.length < 4) {
+        const s0 = p.a === ni ? p.samples[0] : p.samples[p.samples.length - 1];
+        const sign = p.a === ni ? 1 : -1;
+        plates.push({
+          text: `${map.towns[bestTown].name}  ${(bestD / 1000).toFixed(0)}`,
+          yaw: Math.atan2(s0.dirX * sign, s0.dirZ * sign),
+        });
+      }
+    }
+    if (plates.length === 0) return;
+    const px = node.x + 9.5;
+    const pz = node.z + 9.5;
+    const y = terrain.height(px, pz);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.0, 6), POLE_MAT);
+    pole.position.set(px, y + 1.5, pz);
+    group.add(pole);
+    plates.forEach((plate, i) => {
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.0, 0.42),
+        new THREE.MeshStandardMaterial({ map: signTexture(plate.text, "dir"), side: THREE.DoubleSide, roughness: 0.7 })
+      );
+      // plate points along its road: rotate to be readable across it
+      board.rotation.y = plate.yaw + Math.PI / 2;
+      board.position.set(px, y + 2.85 - i * 0.5, pz);
+      group.add(board);
+    });
+  });
+
+  group.traverse((o) => (o.castShadow = true));
+  return group;
+}
+
+// ====================================================================
+// harbour: stone pier, fishing boats, buoys at the coastal town
+// ====================================================================
+
+function buildHarbour(map: MapData, terrain: Terrain, rand: () => number): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "harbour";
+  const town = map.towns[0];
+  if (!town || town.x > map.coastX + 420) return group;
+
+  const stone = new THREE.MeshStandardMaterial({ color: 0x9a917e, roughness: 0.9 });
+  // pier from the beach out into the sea
+  const pierLen = 150;
+  const pierX0 = map.coastX + 55;
+  const pier = new THREE.Mesh(new THREE.BoxGeometry(pierLen, 2.4, 7), stone);
+  pier.position.set(pierX0 - pierLen / 2, 0.6, town.z);
+  pier.castShadow = true;
+  pier.receiveShadow = true;
+  group.add(pier);
+  // end platform + bollards
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(16, 2.6, 16), stone);
+  platform.position.set(pierX0 - pierLen, 0.6, town.z);
+  group.add(platform);
+  const bollardMat = new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: 0.5, metalness: 0.5 });
+  for (let i = 0; i < 6; i++) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.5, 8), bollardMat);
+    b.position.set(pierX0 - 18 - i * 24, 2.05, town.z + (i % 2 === 0 ? 2.9 : -2.9));
+    group.add(b);
+  }
+  // lamp at the pier head
+  const lampModel = buildModel("lamp");
+  const lamp = new THREE.Mesh(lampModel.geo, BUILDING_MATERIAL);
+  lamp.position.set(pierX0 - pierLen, 1.9, town.z + 5);
+  group.add(lamp);
+  if (lampModel.glow) {
+    const lg = new THREE.Mesh(lampModel.glow, NIGHT_GLOW_MATERIAL);
+    lg.position.copy(lamp.position);
+    group.add(lg);
+  }
+
+  // fishing boats moored in the bay
+  const HULLS = [0xc23b2e, 0x2a5d8f, 0xe8e4da, 0x2e7d4f, 0xd4842a];
+  for (let i = 0; i < 7; i++) {
+    const boat = new THREE.Group();
+    const hullColor = HULLS[Math.floor(rand() * HULLS.length)];
+    const hullMat = new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.55 });
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.0, 1.7), hullMat);
+    hull.position.y = 0.25;
+    boat.add(hull);
+    const bow = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.6, 4), hullMat);
+    bow.rotation.z = -Math.PI / 2;
+    bow.rotation.y = Math.PI / 4;
+    bow.position.set(2.8, 0.25, 0);
+    boat.add(bow);
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(3.6, 0.15, 1.3),
+      new THREE.MeshStandardMaterial({ color: 0xb09467, roughness: 0.8 })
+    );
+    deck.position.y = 0.72;
+    boat.add(deck);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.4, 6), deck.material);
+    mast.position.set(0.4, 2.2, 0);
+    boat.add(mast);
+    boat.position.set(
+      map.coastX - 60 - rand() * 180,
+      0.15,
+      town.z + (rand() - 0.5) * 320
+    );
+    boat.rotation.y = rand() * Math.PI * 2;
+    boat.rotation.z = (rand() - 0.5) * 0.04;
+    boat.traverse((o) => (o.castShadow = true));
+    group.add(boat);
+  }
+
+  // buoys
+  const buoyMat = new THREE.MeshStandardMaterial({ color: 0xc23b2e, roughness: 0.5 });
+  for (let i = 0; i < 8; i++) {
+    const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), buoyMat);
+    buoy.position.set(map.coastX - 40 - rand() * 320, 0.25, town.z + (rand() - 0.5) * 600);
+    group.add(buoy);
+  }
+  return group;
+}
+
+// ====================================================================
+// animals: sheep flocks and cattle on the pastures
+// ====================================================================
+
+function buildAnimals(
+  map: MapData,
+  terrain: Terrain,
+  rand: () => number,
+  blocked: (x: number, z: number, m?: number) => boolean,
+  inTown: (x: number, z: number, e?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "animals";
+  const half = map.size / 2 - 100;
+
+  const sheepGeo = (() => {
+    const body = new THREE.IcosahedronGeometry(0.55, 1);
+    body.scale(1.25, 0.9, 0.9);
+    body.translate(0, 0.75, 0);
+    const head = new THREE.IcosahedronGeometry(0.2, 1);
+    head.translate(0.72, 0.72, 0);
+    const geos = [colorGeo(body, 0xe8e3d8), colorGeo(head, 0x3a332c)];
+    for (const [lx, lz] of [[0.35, 0.22], [0.35, -0.22], [-0.35, 0.22], [-0.35, -0.22]]) {
+      const leg = new THREE.CylinderGeometry(0.05, 0.05, 0.45, 5);
+      leg.translate(lx, 0.22, lz);
+      geos.push(colorGeo(leg, 0x3a332c));
+    }
+    return mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)))!;
+  })();
+
+  const cowGeo = (() => {
+    const body = new THREE.BoxGeometry(1.9, 1.0, 0.95);
+    body.translate(0, 1.05, 0);
+    const head = new THREE.BoxGeometry(0.55, 0.5, 0.45);
+    head.translate(1.15, 1.25, 0);
+    const geos = [colorGeo(body, 0xa97c50), colorGeo(head, 0x8a6342)];
+    for (const [lx, lz] of [[0.7, 0.3], [0.7, -0.3], [-0.7, 0.3], [-0.7, -0.3]]) {
+      const leg = new THREE.CylinderGeometry(0.09, 0.09, 0.6, 5);
+      leg.translate(lx, 0.3, lz);
+      geos.push(colorGeo(leg, 0x6e4f33));
+    }
+    return mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)))!;
+  })();
+
+  const sheepSpots: { x: number; z: number; rot: number; s: number }[] = [];
+  const cowSpots: { x: number; z: number; rot: number; s: number }[] = [];
+  for (let x = -half; x < half; x += 55) {
+    for (let z = -half; z < half; z += 55) {
+      if (rand() > 0.045) continue;
+      const cx = x + (rand() - 0.5) * 30;
+      const cz = z + (rand() - 0.5) * 30;
+      if (cx < map.coastX + 150 || inTown(cx, cz, 40) || blocked(cx, cz, 18)) continue;
+      if (terrain.fieldKind(cx, cz) !== "pasture") continue;
+      const cows = rand() < 0.3;
+      const count = cows ? 3 + Math.floor(rand() * 3) : 5 + Math.floor(rand() * 5);
+      for (let i = 0; i < count; i++) {
+        const px = cx + (rand() - 0.5) * 26;
+        const pz = cz + (rand() - 0.5) * 26;
+        if (blocked(px, pz, 8)) continue;
+        (cows ? cowSpots : sheepSpots).push({ x: px, z: pz, rot: rand() * 6.28, s: 0.85 + rand() * 0.3 });
+      }
+    }
+  }
+
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+  const dummy = new THREE.Object3D();
+  for (const [geo, spots] of [
+    [sheepGeo, sheepSpots],
+    [cowGeo, cowSpots],
+  ] as const) {
+    if (spots.length === 0) continue;
+    const inst = new THREE.InstancedMesh(geo, mat, spots.length);
+    spots.forEach((p, i) => {
+      dummy.position.set(p.x, terrain.height(p.x, p.z), p.z);
+      dummy.rotation.set(0, p.rot, 0);
+      dummy.scale.setScalar(p.s);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    inst.castShadow = true;
+    group.add(inst);
+  }
+  return group;
+}
+
+function colorGeo(geo: THREE.BufferGeometry, color: number): THREE.BufferGeometry {
+  const c = new THREE.Color(color);
+  const count = geo.attributes.position.count;
+  const arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+  return geo;
+}
+
+// ====================================================================
+// hay bales on the wheat stubble (summer & autumn)
+// ====================================================================
+
+function buildHayBales(
+  map: MapData,
+  terrain: Terrain,
+  rand: () => number,
+  blocked: (x: number, z: number, m?: number) => boolean,
+  inTown: (x: number, z: number, e?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "hay";
+  if (terrain.season !== "summer" && terrain.season !== "autumn") return group;
+  const half = map.size / 2 - 100;
+  const spots: { x: number; z: number; rot: number }[] = [];
+  for (let x = -half; x < half; x += 42) {
+    for (let z = -half; z < half; z += 42) {
+      if (rand() > 0.16) continue;
+      const px = x + (rand() - 0.5) * 30;
+      const pz = z + (rand() - 0.5) * 30;
+      if (px < map.coastX + 150 || inTown(px, pz, 30) || blocked(px, pz, 12)) continue;
+      if (terrain.fieldKind(px, pz) !== "wheat") continue;
+      spots.push({ x: px, z: pz, rot: rand() * 6.28 });
+    }
+  }
+  if (spots.length === 0) return group;
+  const geo = new THREE.CylinderGeometry(1.05, 1.05, 1.6, 12);
+  geo.rotateZ(Math.PI / 2);
+  geo.translate(0, 1.05, 0);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xc9a85c, roughness: 1 });
+  const inst = new THREE.InstancedMesh(geo, mat, spots.length);
+  const dummy = new THREE.Object3D();
+  spots.forEach((p, i) => {
+    dummy.position.set(p.x, terrain.height(p.x, p.z) - 0.05, p.z);
+    dummy.rotation.set(0, p.rot, 0);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+  });
+  inst.castShadow = true;
+  group.add(inst);
+  return group;
+}
+
+// ====================================================================
+// telegraph poles + sagging wires along the main roads
+// ====================================================================
+
+function buildTelegraphPoles(terrain: Terrain, network: RoadNetwork, rand: () => number): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "telegraph";
+
+  const poleGeo = (() => {
+    const post = new THREE.CylinderGeometry(0.09, 0.12, 7.2, 6);
+    post.translate(0, 3.6, 0);
+    const arm = new THREE.BoxGeometry(1.3, 0.1, 0.1);
+    arm.translate(0, 6.7, 0);
+    return mergeGeometries([colorGeo(post, 0x6b5236), colorGeo(arm, 0x5a4429)].map((g) => g.toNonIndexed()))!;
+  })();
+  const poleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+
+  const positions: { x: number; y: number; z: number }[] = [];
+  const wireVerts: number[] = [];
+
+  for (const path of network.paths) {
+    if (path.kind !== "main" || path.length < 120) continue;
+    if (rand() < 0.25) continue; // not every road has a line
+    let prevTop: THREE.Vector3 | null = null;
+    for (let d = 20; d < path.length - 20; d += 38) {
+      // walk samples to distance d
+      let i = 0;
+      while (i < path.samples.length - 1 && path.samples[i].dist < d) i++;
+      const s = path.samples[i];
+      const px = s.x - s.dirZ * -(path.half + 3.4); // left side, consistent
+      const pz = s.z + s.dirX * -(path.half + 3.4);
+      const py = terrain.height(px, pz);
+      positions.push({ x: px, y: py, z: pz });
+      const top = new THREE.Vector3(px, py + 6.7, pz);
+      if (prevTop && prevTop.distanceTo(top) < 55) {
+        // sagging wire: two segments with a dip in the middle
+        const mid = prevTop.clone().lerp(top, 0.5);
+        mid.y -= 0.55;
+        wireVerts.push(prevTop.x, prevTop.y, prevTop.z, mid.x, mid.y, mid.z);
+        wireVerts.push(mid.x, mid.y, mid.z, top.x, top.y, top.z);
+      }
+      prevTop = top;
+    }
+  }
+
+  if (positions.length) {
+    const inst = new THREE.InstancedMesh(poleGeo, poleMat, positions.length);
+    const dummy = new THREE.Object3D();
+    positions.forEach((p, i) => {
+      dummy.position.set(p.x, p.y, p.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    inst.castShadow = true;
+    group.add(inst);
+  }
+  if (wireVerts.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(wireVerts, 3));
+    const wires = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({ color: 0x1c1c1c, transparent: true, opacity: 0.75 })
+    );
+    group.add(wires);
+  }
   return group;
 }
 

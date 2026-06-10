@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { MapData } from "../types";
 import { Terrain, type Season } from "./terrain";
 import { RoadNetwork } from "./road";
+import { River } from "./river";
 import { Route, generateRoutes } from "./routes";
 import { buildScenery, Environment } from "./scenery";
 
@@ -15,6 +16,7 @@ export class World {
   map: MapData;
   terrain!: Terrain;
   network!: RoadNetwork;
+  river!: River;
   routes: Route[] = [];
   /** lower-resolution rebuilds while the editor drags things around */
   quality: "full" | "fast" = "full";
@@ -39,6 +41,8 @@ export class World {
       });
     }
     this.terrain = new Terrain(this.map, this.quality, this.season);
+    this.river = new River(this.map, this.terrain);
+    this.terrain.setRiver(this.river.samples);
     this.network = new RoadNetwork(this.map, this.terrain);
     this.terrain.setRoad(this.network.allSamples);
     this.routes = generateRoutes(this.map, this.network);
@@ -47,7 +51,10 @@ export class World {
     group.name = "world";
     group.add(this.terrain.buildMesh());
     group.add(this.network.buildMesh());
-    group.add(buildScenery(this.map, this.terrain));
+    const riverMesh = this.river.buildMesh();
+    if (riverMesh) group.add(riverMesh);
+    group.add(this.river.buildBridges(this.network));
+    group.add(buildScenery(this.map, this.terrain, this.network));
     this.scene.add(group);
     this.worldGroup = group;
   }

@@ -5,6 +5,7 @@
 import { defaultMap } from "../src/world/mapData";
 import { Terrain } from "../src/world/terrain";
 import { RoadNetwork, MAX_GRADE } from "../src/world/road";
+import { River } from "../src/world/river";
 import { generateRoutes } from "../src/world/routes";
 import { BikePhysics } from "../src/sim/physics";
 import { RideRecorder, gameToGps } from "../src/fit/recorder";
@@ -18,8 +19,29 @@ function check(name: string, ok: boolean, info = ""): void {
 // ---------- world generation ----------
 const map = defaultMap();
 const terrain = new Terrain(map);
+const river = new River(map, terrain);
+terrain.setRiver(river.samples);
 const network = new RoadNetwork(map, terrain);
 terrain.setRoad(network.allSamples);
+
+// ---------- river ----------
+check("river has a course", river.samples.length > 60, `${river.samples.length} samples`);
+{
+  let monotonic = true;
+  for (let i = 1; i < river.samples.length; i++) {
+    if (river.samples[i].y > river.samples[i - 1].y + 0.001) {
+      monotonic = false;
+      break;
+    }
+  }
+  check("river flows downhill", monotonic);
+  const mouth = river.samples[river.samples.length - 1];
+  check("river reaches the sea", mouth.x < map.coastX && mouth.y <= -0.3, `mouth at x=${mouth.x.toFixed(0)}, y=${mouth.y.toFixed(1)}`);
+  const clear = map.towns.every((t) =>
+    river.samples.every((s) => Math.hypot(s.x - t.x, s.z - t.z) > t.radius)
+  );
+  check("river avoids the towns", clear);
+}
 
 check("towns generated", map.towns.length >= 4, `${map.towns.length} towns: ${map.towns.map((t) => t.name).join(", ")}`);
 check("network has junctions", map.nodes.length >= map.towns.length + 8, `${map.nodes.length} nodes`);

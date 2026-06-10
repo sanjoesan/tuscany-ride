@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Noise2D } from "./noise";
 import type { MapData } from "../types";
+import type { RiverSample } from "./river";
 
 export interface RoadSample {
   x: number;
@@ -93,6 +94,8 @@ export class Terrain {
   private roadSamples: RoadSample[] = [];
   private grid = new Map<number, number[]>(); // spatial hash cell -> sample indices
   private gridCell = 30;
+  private riverSamples: RiverSample[] = [];
+  private riverGrid = new Map<number, number[]>();
   /** extra flatten width beyond the asphalt (>= one terrain-grid cell) */
   private spacingPad: number;
   /** outer search radius for road influence */
@@ -173,6 +176,45 @@ export class Terrain {
     return this.roadSamples;
   }
 
+  /** Register the river course so the terrain carves its bed. */
+  setRiver(samples: RiverSample[]): void {
+    this.riverSamples = samples;
+    this.riverGrid.clear();
+    samples.forEach((s, i) => {
+      const key = this.cellKey(s.x, s.z);
+      let arr = this.riverGrid.get(key);
+      if (!arr) {
+        arr = [];
+        this.riverGrid.set(key, arr);
+      }
+      arr.push(i);
+    });
+  }
+
+  /** Nearest river sample within `radius`, or null. */
+  nearestRiver(x: number, z: number, radius = 40): { sample: RiverSample; dist: number } | null {
+    let best: RiverSample | null = null;
+    let bestD = radius;
+    const r = Math.ceil(radius / this.gridCell);
+    const cx = Math.floor(x / this.gridCell);
+    const cz = Math.floor(z / this.gridCell);
+    for (let ix = cx - r; ix <= cx + r; ix++) {
+      for (let iz = cz - r; iz <= cz + r; iz++) {
+        const arr = this.riverGrid.get(ix * 73856093 + iz * 19349663);
+        if (!arr) continue;
+        for (const idx of arr) {
+          const s = this.riverSamples[idx];
+          const d = Math.hypot(s.x - x, s.z - z);
+          if (d < bestD) {
+            bestD = d;
+            best = s;
+          }
+        }
+      }
+    }
+    return best ? { sample: best, dist: bestD } : null;
+  }
+
   private cellKey(x: number, z: number): number {
     const cx = Math.floor(x / this.gridCell);
     const cz = Math.floor(z / this.gridCell);
@@ -212,6 +254,13 @@ export class Terrain {
       const f = 1 - smoothstep(flat, flat + 15, near.dist);
       h = lerp(h, near.sample.y - 0.3, f); // corridor carved below the asphalt
     }
+    // the river carves its bed last - it cuts under roads (bridges span it)
+    const rv = this.nearestRiver(x, z);
+    if (rv) {
+      const bed = rv.sample.y - 1.5;
+      const f = 1 - smoothstep(rv.sample.half, rv.sample.half + 12, rv.dist);
+      if (f > 0) h = lerp(h, Math.min(h, bed), f);
+    }
     return h;
   }
 
@@ -220,7 +269,15 @@ export class Terrain {
    * vineyard row stripes, plow furrows, wheat grain, scrub patches,
    * wet/dry beach sand. Written per-pixel into the terrain texture.
    */
-  color(x: number, z: number, h: number, slope: number, out: THREE.Color, roadDist: number | null = null): void {
+  color(
+    x: number,
+    z: number,
+    h: number,
+    slope: number,
+    out: THREE.Color,
+    roadDist: number | null = null,
+    riverNear: { dist: number; y: number; half: number } | null = null
+  ): void {
     const m = this.map;
 
     // fine grain used everywhere so nothing looks flat
@@ -231,6 +288,23 @@ export class Terrain {
       const wet = smoothstep(0.45, -1.5, h);
       out.setRGB(0.62 - wet * 0.18 + grain, 0.55 - wet * 0.16 + grain, 0.42 - wet * 0.13 + grain);
       return;
+    }
+
+    // river: pebble bed under water, lush banks beside it
+    if (riverNear) {
+      if (h < riverNear.y + 0.25) {
+        out.setRGB(0.5 + grain, 0.46 + grain, 0.38 + grain); // wet pebbles
+        return;
+      }
+      if (riverNear.dist < riverNear.half + 26) {
+        const f = (1 - smoothstep(riverNear.half + 2, riverNear.half + 26, riverNear.dist)) * 0.75;
+        const gg = grain * 1.4;
+        const lush = new THREE.Color(0.27 + gg, 0.45 + gg, 0.17 + gg);
+        const rest = new THREE.Color();
+        this.color(x, z, h, slope, rest, roadDist, null);
+        out.copy(lush).lerp(rest, 1 - f);
+        return;
+      }
     }
     const beach = smoothstep(m.coastX + 150, m.coastX + 60, x);
     if (beach > 0.55) {
@@ -348,7 +422,7 @@ export class Terrain {
       );
     };
 
-    // coarse road-presence grid so we only do exact distance checks near roads
+    // coarse presence grids so we only do exact distance checks near roads/river
     const P = 200;
     const presence = new Uint8Array(P * P);
     for (const s of this.roadSamples) {
@@ -359,6 +433,18 @@ export class Terrain {
           const ix = gx + dx;
           const iz = gz + dz;
           if (ix >= 0 && ix < P && iz >= 0 && iz < P) presence[iz * P + ix] = 1;
+        }
+      }
+    }
+    const riverPres = new Uint8Array(P * P);
+    for (const s of this.riverSamples) {
+      const gx = Math.floor(((s.x + m.size / 2) / m.size) * P);
+      const gz = Math.floor(((s.z + m.size / 2) / m.size) * P);
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          const ix = gx + dx;
+          const iz = gz + dz;
+          if (ix >= 0 && ix < P && iz >= 0 && iz < P) riverPres[iz * P + ix] = 1;
         }
       }
     }
@@ -385,7 +471,12 @@ export class Terrain {
           const near = this.nearestRoad(x, z, 14);
           if (near) roadDist = near.dist;
         }
-        this.color(x, z, h, slope, c, roadDist);
+        let riverNear: { dist: number; y: number; half: number } | null = null;
+        if (riverPres[Math.floor(fy * P) * P + Math.floor(fx * P)]) {
+          const nr = this.nearestRiver(x, z, 42);
+          if (nr) riverNear = { dist: nr.dist, y: nr.sample.y, half: nr.sample.half };
+        }
+        this.color(x, z, h, slope, c, roadDist, riverNear);
         const i = (py * resolution + px) * 4;
         data[i] = Math.max(0, Math.min(255, c.r * 255));
         data[i + 1] = Math.max(0, Math.min(255, c.g * 255));
