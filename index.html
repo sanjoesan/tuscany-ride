@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tuscany Ride</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- ==================== START / MENU SCREEN ==================== -->
+  <div id="menu" class="overlay">
+    <div class="menu-card">
+      <h1>Tuscany Ride</h1>
+      <p class="subtitle">Free indoor cycling &mdash; no subscription, no crowds. Just you and the hills.</p>
+
+      <div class="menu-row">
+        <button id="btn-connect-trainer" class="btn primary">&#128268; Connect Smart Trainer</button>
+        <span id="trainer-status" class="status">not connected</span>
+      </div>
+      <div class="menu-row">
+        <button id="btn-connect-hr" class="btn">&#10084;&#65039; Connect Heart Rate</button>
+        <span id="hr-status" class="status">not connected</span>
+      </div>
+      <div class="menu-row">
+        <button id="btn-demo" class="btn">&#127918; Demo Mode (no trainer)</button>
+        <span class="status">arrow keys control power</span>
+      </div>
+
+      <div class="settings-grid">
+        <label>Rider weight (kg)
+          <input id="inp-weight" type="number" min="30" max="200" step="1" value="75" />
+        </label>
+        <label>Bike weight (kg)
+          <input id="inp-bike-weight" type="number" min="5" max="25" step="0.5" value="9" />
+        </label>
+        <label>Trainer difficulty
+          <input id="inp-difficulty" type="range" min="0" max="100" step="5" value="50" />
+        </label>
+        <label>FTP (W, for zones)
+          <input id="inp-ftp" type="number" min="50" max="600" step="5" value="200" />
+        </label>
+      </div>
+
+      <div class="menu-row">
+        <button id="btn-start-ride" class="btn primary big" disabled>&#128692; Start Ride</button>
+        <button id="btn-editor" class="btn big">&#128736;&#65039; World Builder</button>
+      </div>
+
+      <div class="menu-row maps-row">
+        <label class="file-label">
+          <input id="inp-load-map" type="file" accept=".json" hidden />
+          <span class="btn small">&#128193; Load Map</span>
+        </label>
+        <button id="btn-reset-map" class="btn small">&#8634; Reset to Tuscany</button>
+        <span id="map-name" class="status">Toscana Classica</span>
+      </div>
+
+      <p class="hint">Bluetooth needs Chrome or Edge. Your trainer must support FTMS (most do: Wahoo, Tacx, Elite, Saris, JetBlack&hellip;).</p>
+    </div>
+  </div>
+
+  <!-- ==================== RIDE HUD ==================== -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-metric big-metric">
+        <span class="hud-value" id="hud-power">0</span>
+        <span class="hud-label">WATT</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-speed">0.0</span>
+        <span class="hud-label">KM/H</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-cadence">0</span>
+        <span class="hud-label">RPM</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-hr">--</span>
+        <span class="hud-label">BPM</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-grade">0.0%</span>
+        <span class="hud-label">GRADE</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-distance">0.00</span>
+        <span class="hud-label">KM</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-time">0:00</span>
+        <span class="hud-label">TIME</span>
+      </div>
+      <div class="hud-metric">
+        <span class="hud-value" id="hud-elevation">0</span>
+        <span class="hud-label">ELEV M</span>
+      </div>
+    </div>
+    <canvas id="profile-canvas" width="900" height="70"></canvas>
+    <div class="hud-bottom">
+      <button id="btn-end-ride" class="btn danger small">&#9632; End Ride</button>
+      <span class="hint-inline">C: camera &middot; arrows: demo power</span>
+    </div>
+  </div>
+
+  <!-- ==================== RIDE SUMMARY ==================== -->
+  <div id="summary" class="overlay hidden">
+    <div class="menu-card">
+      <h2>Ride Complete &#127942;</h2>
+      <div id="summary-stats" class="summary-grid"></div>
+      <div class="menu-row">
+        <button id="btn-export-fit" class="btn primary big">&#11015;&#65039; Download .FIT for Garmin Connect</button>
+      </div>
+      <p class="hint">Upload at <b>connect.garmin.com</b> &rarr; &#8853; &rarr; Import Data, or run <code>npm run upload</code> for automatic upload.</p>
+      <div class="menu-row">
+        <button id="btn-back-menu" class="btn">Back to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== WORLD BUILDER PANEL ==================== -->
+  <div id="editor-panel" class="hidden">
+    <h3>&#128736;&#65039; World Builder</h3>
+    <div class="ed-section">
+      <b>Tool</b>
+      <div class="ed-tools">
+        <button class="ed-tool btn small active" data-tool="select">&#9654; Select</button>
+        <button class="ed-tool btn small" data-tool="road">&#128739;&#65039; Road</button>
+        <button class="ed-tool btn small" data-tool="place">&#127794; Place</button>
+        <button class="ed-tool btn small" data-tool="town">&#127968; Town</button>
+      </div>
+    </div>
+    <div class="ed-section" id="ed-place-section" style="display:none">
+      <b>Object</b>
+      <select id="ed-object-type">
+        <option value="cypress">Cypress tree</option>
+        <option value="pine">Stone pine</option>
+        <option value="olive">Olive tree</option>
+        <option value="house">House</option>
+        <option value="villa">Villa</option>
+        <option value="barn">Barn / Casale</option>
+        <option value="church">Church</option>
+        <option value="tower">Tower</option>
+      </select>
+    </div>
+    <div class="ed-section">
+      <b>Terrain</b>
+      <label class="ed-label">Seed <input id="ed-seed" type="number" step="1" /></label>
+      <label class="ed-label">Hilliness <input id="ed-hill" type="range" min="0" max="200" step="5" /></label>
+      <button id="ed-regen" class="btn small">&#8635; Regenerate</button>
+    </div>
+    <div class="ed-section">
+      <b>Map</b>
+      <label class="ed-label">Name <input id="ed-name" type="text" /></label>
+      <button id="ed-save" class="btn small primary">&#11015;&#65039; Save Map</button>
+      <button id="ed-apply" class="btn small">&#10003; Use &amp; Exit</button>
+      <button id="ed-exit" class="btn small danger">&#10005; Exit</button>
+    </div>
+    <div class="ed-help">
+      <b>Road tool:</b> drag orange points &middot; double-click road = insert point &middot; right-click point = delete<br/>
+      <b>Place tool:</b> click ground = place &middot; R = rotate &middot; +/- = scale<br/>
+      <b>Select:</b> click object, Del = remove &middot; <b>Town:</b> click = move town<br/>
+      <b>Camera:</b> drag = orbit &middot; wheel = zoom &middot; right-drag = pan
+    </div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

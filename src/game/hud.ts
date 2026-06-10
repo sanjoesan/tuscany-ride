@@ -1,0 +1,123 @@
+import type { Road } from "../world/road";
+import type { RideStats } from "../types";
+
+const $ = (id: string) => document.getElementById(id)!;
+
+export class Hud {
+  private profileCtx: CanvasRenderingContext2D;
+  private profile: { d: number; y: number }[] = [];
+  private minY = 0;
+  private maxY = 1;
+  private total = 1;
+
+  constructor() {
+    this.profileCtx = ($("profile-canvas") as HTMLCanvasElement).getContext("2d")!;
+  }
+
+  show(): void {
+    $("hud").classList.remove("hidden");
+  }
+
+  hide(): void {
+    $("hud").classList.add("hidden");
+  }
+
+  setRoad(road: Road): void {
+    this.profile = road.samples.map((s) => ({ d: s.dist, y: s.y }));
+    this.total = road.totalLength;
+    this.minY = Math.min(...this.profile.map((p) => p.y));
+    this.maxY = Math.max(...this.profile.map((p) => p.y));
+  }
+
+  update(v: {
+    power: number; speedKmh: number; cadence: number; hr: number;
+    grade: number; distanceM: number; timeS: number; elevation: number; rideDist: number;
+  }): void {
+    $("hud-power").textContent = String(Math.round(v.power));
+    $("hud-speed").textContent = v.speedKmh.toFixed(1);
+    $("hud-cadence").textContent = String(Math.round(v.cadence));
+    $("hud-hr").textContent = v.hr > 0 ? String(Math.round(v.hr)) : "--";
+    const g = v.grade * 100;
+    const gradeEl = $("hud-grade");
+    gradeEl.textContent = `${g >= 0 ? "" : ""}${g.toFixed(1)}%`;
+    gradeEl.style.color = g > 6 ? "#ff6b5e" : g > 2.5 ? "#f7b733" : g < -2 ? "#6fc1ff" : "#fff";
+    $("hud-distance").textContent = (v.distanceM / 1000).toFixed(2);
+    const min = Math.floor(v.timeS / 60);
+    const hrs = Math.floor(min / 60);
+    const sec = Math.floor(v.timeS % 60);
+    $("hud-time").textContent = hrs > 0
+      ? `${hrs}:${String(min % 60).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+      : `${min}:${String(sec).padStart(2, "0")}`;
+    $("hud-elevation").textContent = String(Math.round(v.elevation));
+    this.drawProfile(v.rideDist);
+  }
+
+  private drawProfile(rideDist: number): void {
+    const ctx = this.profileCtx;
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const range = Math.max(10, this.maxY - this.minY);
+    const px = (d: number) => (d / this.total) * w;
+    const py = (y: number) => h - 8 - ((y - this.minY) / range) * (h - 18);
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (const p of this.profile) ctx.lineTo(px(p.d), py(p.y));
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(247, 183, 51, 0.25)";
+    ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i < this.profile.length; i++) {
+      const p = this.profile[i];
+      if (i === 0) ctx.moveTo(px(p.d), py(p.y));
+      else ctx.lineTo(px(p.d), py(p.y));
+    }
+    ctx.strokeStyle = "#f7b733";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // rider marker
+    const d = ((rideDist % this.total) + this.total) % this.total;
+    const idx = this.profile.findIndex((p) => p.d >= d);
+    const yy = idx >= 0 ? this.profile[idx].y : this.profile[0].y;
+    ctx.beginPath();
+    ctx.arc(px(d), py(yy), 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#ff4a3d";
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+export function showSummary(stats: RideStats): void {
+  const fmt = (v: number, digits = 0) => v.toFixed(digits);
+  const min = Math.floor(stats.durationS / 60);
+  const sec = Math.floor(stats.durationS % 60);
+  const rows: [string, string][] = [
+    [`${min}:${String(sec).padStart(2, "0")}`, "TIME"],
+    [`${(stats.distanceM / 1000).toFixed(2)} km`, "DISTANCE"],
+    [`${fmt(stats.elevationGainM)} m`, "CLIMBED"],
+    [`${fmt(stats.avgPower)} W`, "AVG POWER"],
+    [`${fmt(stats.maxPower)} W`, "MAX POWER"],
+    [`${fmt(stats.avgSpeedKmh, 1)} km/h`, "AVG SPEED"],
+    [`${fmt(stats.avgCadence)} rpm`, "AVG CADENCE"],
+    [stats.avgHr > 0 ? `${fmt(stats.avgHr)} bpm` : "--", "AVG HR"],
+    [`${stats.calories} kcal`, "CALORIES"],
+  ];
+  const grid = $("summary-stats");
+  grid.innerHTML = rows
+    .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`)
+    .join("");
+  $("summary").classList.remove("hidden");
+}
+
+export function toast(msg: string, ms = 2600): void {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  window.clearTimeout((el as any)._t);
+  (el as any)._t = window.setTimeout(() => el.classList.add("hidden"), ms);
+}

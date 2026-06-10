@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+.garmin.json
+*.fit
+shot-*.png
+screenshot.png
