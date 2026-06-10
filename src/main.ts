@@ -171,6 +171,8 @@ function saveSettings(): void {
     ftp: ($("inp-ftp") as HTMLInputElement).value,
     jersey: ($("inp-jersey") as HTMLInputElement).value,
     bikeColor: ($("inp-bike-color") as HTMLInputElement).value,
+    time: ($("inp-time") as HTMLSelectElement).value,
+    season: ($("inp-season") as HTMLSelectElement).value,
   };
   localStorage.setItem("roadgame.settings", JSON.stringify(s));
 }
@@ -186,6 +188,8 @@ function loadSettings(): void {
     if (s.ftp) ($("inp-ftp") as HTMLInputElement).value = s.ftp;
     if (s.jersey) ($("inp-jersey") as HTMLInputElement).value = s.jersey;
     if (s.bikeColor) ($("inp-bike-color") as HTMLInputElement).value = s.bikeColor;
+    if (s.time) ($("inp-time") as HTMLSelectElement).value = s.time;
+    if (s.season) ($("inp-season") as HTMLSelectElement).value = s.season;
   } catch {
     /* ignore */
   }
@@ -271,6 +275,25 @@ window.addEventListener("keydown", (e) => {
   if (mode === "riding" && (e.key === "c" || e.key === "C")) ride?.cycleCamera();
 });
 
+($("inp-time") as HTMLSelectElement).onchange = (e) => {
+  world?.environment.setTimeOfDay((e.target as HTMLSelectElement).value as never);
+  saveSettings();
+};
+
+($("inp-season") as HTMLSelectElement).onchange = (e) => {
+  if (!world) return;
+  const season = (e.target as HTMLSelectElement).value as typeof world.season;
+  $("loading").classList.remove("hidden");
+  setTimeout(() => {
+    world.season = season;
+    world.rebuild();
+    npcs.build();
+    $("loading").classList.add("hidden");
+    toast(`Season: ${season}`);
+  }, 50);
+  saveSettings();
+};
+
 // ---------------- main loop ----------------
 const clock = new THREE.Clock();
 
@@ -305,14 +328,32 @@ function animate(): void {
 // ---------------- boot: build the world behind the loading screen ----------------
 setTimeout(() => {
   world = new World(scene, loadSavedMap() ?? defaultMap(), renderer);
+  // apply persisted season/time before first frame
+  const seasonSel = ($("inp-season") as HTMLSelectElement).value as typeof world.season;
+  if (seasonSel !== "summer") {
+    world.season = seasonSel;
+    world.rebuild();
+  }
+  world.environment.setTimeOfDay(($("inp-time") as HTMLSelectElement).value as never);
   npcs = new NpcManager(world);
   npcs.build();
   $("map-name").textContent = world.map.name;
   populateRoutePicker();
   $("loading").classList.add("hidden");
 
-  // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride
+  // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride,
+  // #route=N / #time=night / #season=autumn force a specific setup
   if (location.hash.includes("noui")) $("menu").classList.add("hidden");
+  const routeM = /route=(\d+)/.exec(location.hash);
+  if (routeM) selectedRoute = Math.min(world.routes.length - 1, Number(routeM[1]));
+  const timeM = /time=(\w+)/.exec(location.hash);
+  if (timeM) world.environment.setTimeOfDay(timeM[1] as never);
+  const seasonM = /season=(\w+)/.exec(location.hash);
+  if (seasonM) {
+    world.season = seasonM[1] as typeof world.season;
+    world.rebuild();
+    npcs.build();
+  }
   if (location.hash.includes("autoride")) {
     virtual = new VirtualTrainer(onTrainerData);
     virtual.start();

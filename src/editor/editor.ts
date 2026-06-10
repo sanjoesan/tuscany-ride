@@ -39,6 +39,7 @@ export class Editor {
   private sceneryMarkers: THREE.Mesh[] = [];
   private dragMarker: RoadMarker | null = null;
   private selectedScenery = -1;
+  private selectedTown = -1;
   private rebuildTimer: number | null = null;
   private disposed = false;
   onExit: (applied: boolean) => void = () => {};
@@ -59,6 +60,8 @@ export class Editor {
 
     this.controls = new OrbitControls(camera, renderer.domElement);
     this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
+    this.controls.panSpeed = 3.2; // the world is 6 km - default panning feels glacial
+    this.controls.zoomSpeed = 1.6;
     const t0 = this.map.towns[0];
     this.controls.target.set(t0.x, 0, t0.z);
     camera.position.set(t0.x + 350, 450, t0.z + 350);
@@ -150,19 +153,25 @@ export class Editor {
       this.selectedScenery = this.map.scenery.length - 1;
       this.refreshMarkers();
       this.scheduleRebuild();
-    } else if (this.tool === "town" && e.button === 0 && hit) {
-      // move the nearest town (and its piazza node) to the clicked spot
-      let best = 0;
-      let bestD = Infinity;
-      this.map.towns.forEach((t, i) => {
-        const d = Math.hypot(t.x - hit.x, t.z - hit.z);
-        if (d < bestD) { bestD = d; best = i; }
-      });
-      this.map.towns[best].x = hit.x;
-      this.map.towns[best].z = hit.z;
-      this.map.nodes[best].x = hit.x; // towns are the first nodes
-      this.map.nodes[best].z = hit.z;
-      this.scheduleRebuild();
+    } else if (this.tool === "town" && e.button === 0) {
+      // 1st click: select a town (blue marker with its name). 2nd click on
+      // the ground: move the selected town there.
+      const m = this.pickRoadMarker(e);
+      if (m && m.kind === "node" && m.node !== undefined && m.node < this.map.towns.length) {
+        this.selectedTown = m.node;
+        this.setStatus(`Selected: <b>${this.map.towns[m.node].name}</b> - click the ground to move it`);
+        this.refreshMarkers();
+      } else if (hit && this.selectedTown >= 0) {
+        const town = this.map.towns[this.selectedTown];
+        town.x = hit.x;
+        town.z = hit.z;
+        this.map.nodes[this.selectedTown].x = hit.x; // towns are the first nodes
+        this.map.nodes[this.selectedTown].z = hit.z;
+        this.setStatus(`Moved <b>${town.name}</b>`);
+        this.scheduleRebuild();
+      } else {
+        this.setStatus("Click a town marker to select it first");
+      }
     } else if (this.tool === "select" && e.button === 0) {
       this.selectedScenery = this.pickSceneryMarker(e);
       this.refreshMarkers();
@@ -291,6 +300,31 @@ export class Editor {
     return this.sceneryMarkers.indexOf(hits[0].object as THREE.Mesh);
   }
 
+  private setStatus(html: string): void {
+    $("ed-status").innerHTML = html;
+  }
+
+  /** floating name label above a town */
+  private makeLabel(text: string, highlight: boolean): THREE.Sprite {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = highlight ? "rgba(255, 215, 64, 0.92)" : "rgba(18, 24, 40, 0.85)";
+    ctx.beginPath();
+    ctx.roundRect(4, 8, 248, 48, 12);
+    ctx.fill();
+    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = highlight ? "#1a1a2e" : "#ffffff";
+    ctx.fillText(text, 128, 33);
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+    sprite.scale.set(120, 30, 1);
+    return sprite;
+  }
+
   // ---------------- markers & rebuild ----------------
   private refreshMarkers(): void {
     this.markers.clear();
@@ -299,10 +333,20 @@ export class Editor {
     const h = (x: number, z: number) => this.world.terrain.height(x, z) + 4;
     if (this.tool === "road" || this.tool === "town") {
       this.map.nodes.forEach((n, ni) => {
-        const mesh = new THREE.Mesh(this.nodeGeo, this.nodeMat);
+        const isTown = ni < this.map.towns.length;
+        if (this.tool === "town" && !isTown) return; // town tool: towns only
+        const mesh = new THREE.Mesh(
+          this.nodeGeo,
+          this.tool === "town" && ni === this.selectedTown ? this.markerMatSel : this.nodeMat
+        );
         mesh.position.set(n.x, h(n.x, n.z), n.z);
         this.markers.add(mesh);
         this.roadMarkers.push({ mesh, kind: "node", node: ni });
+        if (isTown) {
+          const label = this.makeLabel(this.map.towns[ni].name, ni === this.selectedTown && this.tool === "town");
+          label.position.set(n.x, h(n.x, n.z) + 46, n.z);
+          this.markers.add(label);
+        }
       });
     }
     if (this.tool === "road") {

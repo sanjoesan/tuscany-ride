@@ -19,7 +19,11 @@ export class Rider {
     const frameMat = new THREE.MeshStandardMaterial({ color: bikeColor, roughness: 0.35, metalness: 0.6 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.7, metalness: 0.3 });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9a47e, roughness: 0.75, metalness: 0 });
-    const jerseyMat = new THREE.MeshStandardMaterial({ color: jerseyColor, roughness: 0.6, metalness: 0 });
+    const jerseyMat = new THREE.MeshStandardMaterial({
+      map: buildJerseyTexture(jerseyColor),
+      roughness: 0.6,
+      metalness: 0,
+    });
     const shortsMat = new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: 0.65, metalness: 0 });
 
     // wheels: torus in the XY plane = vertical wheel rolling along +X
@@ -123,6 +127,8 @@ export class Rider {
     this.object = g;
   }
 
+  static jerseyCache = new Map<number, THREE.CanvasTexture>();
+
   /** advance animation: wheel spin from speed, leg cadence from rpm */
   update(dt: number, speedMs: number, cadenceRpm: number): void {
     const wheelOmega = speedMs / 0.34;
@@ -131,4 +137,54 @@ export class Rider {
     this.legL.rotation.z = 0.45 + Math.sin(this.crankAngle) * 0.4;
     this.legR.rotation.z = 0.45 + Math.sin(this.crankAngle + Math.PI) * 0.4;
   }
+}
+
+/**
+ * Cycling jersey: base color with darker side panels, white chest band with
+ * "sponsor" blocks and a zipper line. Cached per color (NPCs share colors).
+ */
+function buildJerseyTexture(color: number): THREE.CanvasTexture {
+  const cached = Rider.jerseyCache.get(color);
+  if (cached) return cached;
+  const S = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const c = new THREE.Color(color);
+  const css = (m: number) =>
+    `rgb(${Math.min(255, c.r * 255 * m)}, ${Math.min(255, c.g * 255 * m)}, ${Math.min(255, c.b * 255 * m)})`;
+  ctx.fillStyle = css(1);
+  ctx.fillRect(0, 0, S, S);
+  // darker side panels
+  ctx.fillStyle = css(0.55);
+  ctx.fillRect(0, 0, 14, S);
+  ctx.fillRect(S - 14, 0, 14, S);
+  // white chest band with sponsor blocks
+  ctx.fillStyle = "#f2f2f2";
+  ctx.fillRect(14, 46, S - 28, 26);
+  ctx.fillStyle = css(0.8);
+  ctx.fillRect(24, 52, 22, 14);
+  ctx.fillStyle = "#2b2b2b";
+  ctx.fillRect(56, 52, 30, 6);
+  ctx.fillRect(56, 61, 18, 5);
+  // zipper
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(S / 2, 0);
+  ctx.lineTo(S / 2, S);
+  ctx.stroke();
+  // fabric grain
+  const img = ctx.getImageData(0, 0, S, S);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 10;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  Rider.jerseyCache.set(color, tex);
+  return tex;
 }

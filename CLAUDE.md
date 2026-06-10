@@ -68,6 +68,22 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-10 (3)** - v0.3 pushed & deployed:
+- [x] FIXED (was top user complaint): roads no longer sink under terrain on hills - corridor is
+      fully flattened >= one terrain-grid cell each side (Terrain.flatHalf), carved 0.3 m below,
+      ribbon lifted 0.12 m, mesh up to 560 segs. Verified at 10 % grade.
+- [x] First-person view (C key cycles chase -> fpv -> front -> side; pedaling bob, rider hidden)
+- [x] Day/night: Environment class, presets morning/noon/afternoon/sunset/night + 8-min cycle
+      (sky-PMREM ambient refreshed, throttled 4 s in cycle mode); moonlight at night
+- [x] Seasons (spring/summer/autumn/winter): SEASON_PALETTES repaint fields/verges/grass; autumn
+      = red vineyards. Season change = full rebuild behind the loading overlay.
+- [x] Variety: 5 randomized house variants (windows/shutters/chimneys) + 4 per tree type;
+      stucco texture on buildings, foliage speckle on trees, jersey texture (cached per color),
+      car paint texture + head/taillights
+- [x] Editor: town tool = click name-labeled town to select, click ground to move; pan 3x faster
+- [x] Dev hashes: #route=N, #time=night, #season=autumn (plus #autoride=S, #noui, cam2)
+- [ ] Watch list: night maybe still dark (bumped moon 0.55), headless sea renders grey (check real GPU)
+
 **2026-06-10 (2)** - v0.2 pushed & deployed:
 - [x] Repo + GitHub Pages auto-deploy (user account "sanjoesan"); Electron/.exe dropped on user request
 - [x] Realism pass: ACES tonemapping, Sky+PMREM ambient, sun shadows, Water sea, painted terrain

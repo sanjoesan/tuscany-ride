@@ -16,28 +16,103 @@ export interface RoadSample {
 }
 
 const ROAD_HALF = 3.5; // paved half-width
-const SHOULDER = 14; // distance over which terrain blends back to natural height
+const SHOULDER = 30; // outer search radius for road influence on terrain
 
 /**
  * Heightfield + biome colors for the Tuscany world.
  * Construction order: base height -> road elevation profile derived from it ->
  * final height conforms terrain to the road corridor.
  */
+export type Season = "spring" | "summer" | "autumn" | "winter";
+
+type RGB = [number, number, number];
+interface SeasonPalette {
+  wheat: RGB;
+  pasture: RGB;
+  vine: RGB;
+  vineEarth: RGB;
+  plow: RGB;
+  olive: RGB;
+  scrub: RGB;
+  verge: RGB;
+}
+
+/** Tuscany through the year: field colors per season. */
+export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
+  spring: {
+    wheat: [0.45, 0.58, 0.27], // young green wheat
+    pasture: [0.38, 0.55, 0.23],
+    vine: [0.3, 0.48, 0.19],
+    vineEarth: [0.5, 0.41, 0.29],
+    plow: [0.45, 0.35, 0.24],
+    olive: [0.42, 0.5, 0.26],
+    scrub: [0.36, 0.44, 0.25],
+    verge: [0.3, 0.5, 0.18],
+  },
+  summer: {
+    wheat: [0.76, 0.64, 0.32], // ripe gold
+    pasture: [0.55, 0.52, 0.3],
+    vine: [0.3, 0.42, 0.18],
+    vineEarth: [0.52, 0.42, 0.3],
+    plow: [0.52, 0.4, 0.27],
+    olive: [0.5, 0.48, 0.3],
+    scrub: [0.42, 0.42, 0.28],
+    verge: [0.33, 0.47, 0.2],
+  },
+  autumn: {
+    wheat: [0.6, 0.49, 0.3], // stubble
+    pasture: [0.5, 0.45, 0.27],
+    vine: [0.55, 0.3, 0.12], // vines turn red and gold
+    vineEarth: [0.48, 0.38, 0.27],
+    plow: [0.44, 0.34, 0.24],
+    olive: [0.46, 0.43, 0.28],
+    scrub: [0.44, 0.4, 0.26],
+    verge: [0.38, 0.42, 0.2],
+  },
+  winter: {
+    wheat: [0.5, 0.44, 0.33], // bare fields
+    pasture: [0.46, 0.48, 0.34],
+    vine: [0.4, 0.34, 0.26], // bare rows
+    vineEarth: [0.46, 0.4, 0.32],
+    plow: [0.42, 0.35, 0.27],
+    olive: [0.44, 0.46, 0.32],
+    scrub: [0.4, 0.42, 0.3],
+    verge: [0.4, 0.44, 0.3],
+  },
+};
+
 export class Terrain {
   readonly map: MapData;
   /** "fast" lowers texture/mesh resolution for live editing in the builder */
   quality: "full" | "fast";
+  season: Season;
   private noise: Noise2D;
   private fieldNoise: Noise2D;
   private roadSamples: RoadSample[] = [];
   private grid = new Map<number, number[]>(); // spatial hash cell -> sample indices
   private gridCell = 30;
+  /** terrain is fully flattened to road height out to this distance... */
+  private flatHalf: number;
+  /** ...and blends back to natural height by this distance */
+  private blendEnd: number;
 
-  constructor(map: MapData, quality: "full" | "fast" = "full") {
+  constructor(map: MapData, quality: "full" | "fast" = "full", season: Season = "summer") {
     this.map = map;
     this.quality = quality;
+    this.season = season;
     this.noise = new Noise2D(map.seed);
     this.fieldNoise = new Noise2D(map.seed * 7 + 13);
+    // the flattened corridor must span at least one terrain-grid cell on
+    // each side, otherwise hillside triangles poke through the asphalt
+    const spacing = map.size / this.meshSegments();
+    this.flatHalf = ROAD_HALF + Math.max(7, spacing * 1.0);
+    this.blendEnd = this.flatHalf + 15;
+  }
+
+  meshSegments(): number {
+    return this.quality === "fast"
+      ? 260
+      : Math.min(560, Math.max(280, Math.round(this.map.size / 11)));
   }
 
   /** Natural terrain height before the road is carved in. */
@@ -103,7 +178,7 @@ export class Terrain {
   }
 
   /** Nearest road sample within `radius`, or null. */
-  nearestRoad(x: number, z: number, radius = ROAD_HALF + SHOULDER): { sample: RoadSample; dist: number } | null {
+  nearestRoad(x: number, z: number, radius = SHOULDER): { sample: RoadSample; dist: number } | null {
     let best: RoadSample | null = null;
     let bestD = radius;
     const r = Math.ceil(radius / this.gridCell);
@@ -129,10 +204,10 @@ export class Terrain {
   /** Final height: natural terrain blended flat under and next to the road. */
   height(x: number, z: number): number {
     let h = this.baseHeight(x, z);
-    const near = this.nearestRoad(x, z);
+    const near = this.nearestRoad(x, z, this.blendEnd);
     if (near) {
-      const f = 1 - smoothstep(ROAD_HALF, ROAD_HALF + SHOULDER, near.dist);
-      h = lerp(h, near.sample.y - 0.18, f); // road sits slightly above blended terrain
+      const f = 1 - smoothstep(this.flatHalf, this.blendEnd, near.dist);
+      h = lerp(h, near.sample.y - 0.3, f); // corridor carved below the asphalt
     }
     return h;
   }
@@ -160,11 +235,12 @@ export class Terrain {
       return;
     }
 
-    // fresh green grass verge along the roads
+    // grass verge along the roads
     if (roadDist !== null && roadDist < 12) {
       const f = (1 - smoothstep(4.5, 12, roadDist)) * 0.7;
       const gg = grain * 1.5;
-      out.setRGB(0.33 + gg, 0.47 + gg, 0.2 + gg);
+      const vg = SEASON_PALETTES[this.season].verge;
+      out.setRGB(vg[0] + gg, vg[1] + gg, vg[2] + gg);
       const rest = new THREE.Color();
       this.color(x, z, h, slope, rest, null);
       out.lerp(rest, 1 - f);
@@ -178,35 +254,34 @@ export class Terrain {
     const cell = this.fieldNoise.noise(Math.floor(rx / 95) * 0.7919, Math.floor(rz / 80) * 0.6131);
     const v = this.fieldNoise.noise(x * 0.02, z * 0.02) * 0.05 + grain;
 
+    const pal = SEASON_PALETTES[this.season];
     if (slope > 3.2) {
-      // dry macchia scrub on steep ground
+      // macchia scrub on steep ground
       const patch = this.fieldNoise.noise(x * 0.05, z * 0.05) * 0.05;
-      out.setRGB(0.42 + v + patch, 0.42 + v + patch, 0.28 + v);
+      out.setRGB(pal.scrub[0] + v + patch, pal.scrub[1] + v + patch, pal.scrub[2] + v);
     } else if (cell > 0.45) {
-      // ripe wheat with faint tractor lines
+      // wheat field with faint tractor lines
       const lines = Math.sin(rz * 0.45) * 0.025;
-      out.setRGB(0.76 + v + lines, 0.64 + v + lines, 0.32 + v);
+      out.setRGB(pal.wheat[0] + v + lines, pal.wheat[1] + v + lines, pal.wheat[2] + v);
     } else if (cell > 0.15) {
-      // vineyard: green rows on warm earth, rows every ~3 m
+      // vineyard: rows on warm earth, every ~3 m
       const row = 0.5 + 0.5 * Math.sin((rx / 3.0) * Math.PI * 2);
-      const earth = { r: 0.52, g: 0.42, b: 0.3 };
-      const vine = { r: 0.3, g: 0.42, b: 0.18 };
       const t = smoothstep(0.35, 0.75, row);
       out.setRGB(
-        earth.r + (vine.r - earth.r) * t + v,
-        earth.g + (vine.g - earth.g) * t + v,
-        earth.b + (vine.b - earth.b) * t + v
+        pal.vineEarth[0] + (pal.vine[0] - pal.vineEarth[0]) * t + v,
+        pal.vineEarth[1] + (pal.vine[1] - pal.vineEarth[1]) * t + v,
+        pal.vineEarth[2] + (pal.vine[2] - pal.vineEarth[2]) * t + v
       );
     } else if (cell > -0.15) {
       // plowed field: furrows every ~1.4 m
       const fur = Math.sin((rz / 1.4) * Math.PI * 2) * 0.045;
-      out.setRGB(0.52 + v + fur, 0.4 + v + fur, 0.27 + v + fur);
+      out.setRGB(pal.plow[0] + v + fur, pal.plow[1] + v + fur, pal.plow[2] + v + fur);
     } else if (cell > -0.5) {
-      // dry summer pasture: gold-green, large soft patches
+      // pasture: large soft patches
       const patch = this.fieldNoise.noise(x * 0.045, z * 0.045) * 0.05;
-      out.setRGB(0.55 + v + patch, 0.52 + v + patch, 0.3 + v);
+      out.setRGB(pal.pasture[0] + v + patch, pal.pasture[1] + v + patch, pal.pasture[2] + v);
     } else {
-      out.setRGB(0.5 + v, 0.48 + v, 0.3 + v); // olive grove ground, dry grass
+      out.setRGB(pal.olive[0] + v, pal.olive[1] + v, pal.olive[2] + v); // olive grove ground
     }
 
     // towns get warm stone paving
@@ -346,7 +421,7 @@ export class Terrain {
 
   buildMesh(): THREE.Mesh {
     const m = this.map;
-    const segs = this.quality === "fast" ? 220 : Math.min(440, Math.max(280, Math.round(m.size / 14)));
+    const segs = this.meshSegments();
     const geo = new THREE.PlaneGeometry(m.size, m.size, segs, segs);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;

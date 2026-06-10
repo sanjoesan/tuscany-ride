@@ -140,6 +140,7 @@ export class NpcManager {
       r.dist += v * dt;
       const right = new THREE.Vector3(at.dir.z, 0, -at.dir.x);
       r.rider.object.position.copy(at.pos).addScaledVector(right, 1.3);
+      r.rider.object.position.y += 0.12;
       r.rider.object.rotation.set(0, Math.atan2(-at.dir.z, at.dir.x), 0);
       r.rider.object.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.atan(at.grade));
       r.rider.update(dt, v, v > 1 ? 82 : 0);
@@ -174,7 +175,7 @@ export class NpcManager {
       const dirX = v.reverse ? -pos.dirX : pos.dirX;
       const dirZ = v.reverse ? -pos.dirZ : pos.dirZ;
       // right-hand traffic: offset to the right of the travel direction
-      v.object.position.set(pos.x + dirZ * 1.9, pos.y, pos.z - dirX * 1.9);
+      v.object.position.set(pos.x + dirZ * 1.9, pos.y + 0.12, pos.z - dirX * 1.9);
       v.object.rotation.set(0, Math.atan2(-dirZ, dirX), 0);
       v.object.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.atan(v.reverse ? -pos.grade : pos.grade));
       const spin = v.speed / 0.34;
@@ -231,12 +232,52 @@ function samplePath(path: EdgePath, s: number): { x: number; y: number; z: numbe
 
 // ---------------- low-poly vehicles & people (built facing +X) ----------------
 
+/** Car body paint with door seams, handles and a dark rocker panel. */
+function buildCarBodyTexture(color: number): THREE.CanvasTexture {
+  const W = 256;
+  const H = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const c = new THREE.Color(color);
+  ctx.fillStyle = `rgb(${c.r * 255}, ${c.g * 255}, ${c.b * 255})`;
+  ctx.fillRect(0, 0, W, H);
+  // glossy top highlight + dark rocker panel
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, "rgba(255,255,255,0.22)");
+  grad.addColorStop(0.45, "rgba(255,255,255,0)");
+  grad.addColorStop(0.88, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.4)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  // door seams + handles
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 2;
+  for (const x of [W * 0.36, W * 0.66]) {
+    ctx.beginPath();
+    ctx.moveTo(x, 8);
+    ctx.lineTo(x, H - 6);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(30,30,30,0.7)";
+  ctx.fillRect(W * 0.4, H * 0.32, 16, 4);
+  ctx.fillRect(W * 0.7, H * 0.32, 16, 4);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function buildCar(rand: () => number): { object: THREE.Group; wheels: THREE.Mesh[] } {
   const g = new THREE.Group();
   const color = CAR_COLORS[Math.floor(rand() * CAR_COLORS.length)];
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.5 });
+  const bodyMat = new THREE.MeshStandardMaterial({
+    map: buildCarBodyTexture(color),
+    roughness: 0.3,
+    metalness: 0.55,
+  });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 0.8 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fb6c9, roughness: 0.15, metalness: 0.4 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x8fa9bd, roughness: 0.12, metalness: 0.5 });
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.62, 1.72), bodyMat);
   body.position.y = 0.62;
@@ -244,6 +285,17 @@ function buildCar(rand: () => number): { object: THREE.Group; wheels: THREE.Mesh
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.6, 1.58), glassMat);
   cabin.position.set(-0.2, 1.2, 0);
   g.add(cabin);
+  // headlights / taillights
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0x887744, roughness: 0.3 });
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0xc01818, emissive: 0x550808, roughness: 0.4 });
+  for (const side of [0.55, -0.55]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.3), headMat);
+    hl.position.set(1.96, 0.72, side);
+    g.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.28), tailMat);
+    tl.position.set(-1.96, 0.72, side);
+    g.add(tl);
+  }
   const wheels: THREE.Mesh[] = [];
   const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 12);
   wheelGeo.rotateX(Math.PI / 2);

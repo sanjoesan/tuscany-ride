@@ -5,7 +5,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { MapData, SceneryType } from "../types";
 import { Terrain, smoothstep } from "./terrain";
 import { mulberry32, Noise2D } from "./noise";
-import { buildModel, SHARED_MODEL_MATERIAL } from "./models";
+import { buildModel, modelMaterial } from "./models";
 
 interface Placement {
   x: number;
@@ -140,37 +140,43 @@ export function buildScenery(map: MapData, terrain: Terrain): THREE.Group {
   }
 
   // ---------- bake into instanced meshes ----------
+  // several geometry variants per type (the builders randomize proportions),
+  // so streets and groves are not armies of clones
   const dummy = new THREE.Object3D();
   const VEGETATION: SceneryType[] = ["cypress", "pine", "olive"];
   const BUILDINGS: SceneryType[] = ["house", "villa", "barn"];
   const jitterColor = new THREE.Color();
   for (const [type, list] of buckets) {
-    const geo = buildModel(type);
-    const inst = new THREE.InstancedMesh(geo, SHARED_MODEL_MATERIAL, list.length);
-    inst.name = `inst-${type}`;
     const vegetate = VEGETATION.includes(type);
     const building = BUILDINGS.includes(type);
-    list.forEach((p, i) => {
-      dummy.position.set(p.x, terrain.height(p.x, p.z) - 0.1, p.z);
-      dummy.rotation.set(0, p.rot, 0);
-      dummy.scale.setScalar(p.scale);
-      dummy.updateMatrix();
-      inst.setMatrixAt(i, dummy.matrix);
-      // natural variation so no two plants / houses look identical
-      if (vegetate) {
-        const b = 0.75 + rand() * 0.3;
-        jitterColor.setRGB(b * (0.95 + rand() * 0.1), b, b * (0.9 + rand() * 0.1));
-        inst.setColorAt(i, jitterColor);
-      } else if (building) {
-        const b = 0.88 + rand() * 0.18;
-        jitterColor.setRGB(b, b * (0.97 + rand() * 0.05), b * (0.92 + rand() * 0.08));
-        inst.setColorAt(i, jitterColor);
-      }
-    });
-    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-    inst.castShadow = true;
-    inst.receiveShadow = true;
-    group.add(inst);
+    const variants = type === "house" ? 5 : vegetate ? 4 : 1;
+    for (let v = 0; v < variants; v++) {
+      const sub = list.filter((_, i) => i % variants === v);
+      if (sub.length === 0) continue;
+      const inst = new THREE.InstancedMesh(buildModel(type), modelMaterial(type), sub.length);
+      inst.name = `inst-${type}-${v}`;
+      sub.forEach((p, i) => {
+        dummy.position.set(p.x, terrain.height(p.x, p.z) - 0.1, p.z);
+        dummy.rotation.set(0, p.rot, 0);
+        dummy.scale.setScalar(p.scale);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+        // natural variation so no two plants / houses look identical
+        if (vegetate) {
+          const b = 0.72 + rand() * 0.36;
+          jitterColor.setRGB(b * (0.92 + rand() * 0.16), b, b * (0.88 + rand() * 0.14));
+          inst.setColorAt(i, jitterColor);
+        } else if (building) {
+          const b = 0.86 + rand() * 0.2;
+          jitterColor.setRGB(b, b * (0.96 + rand() * 0.07), b * (0.9 + rand() * 0.1));
+          inst.setColorAt(i, jitterColor);
+        }
+      });
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      group.add(inst);
+    }
   }
   // ---------- grass tufts near the roads ----------
   const grass = buildGrass(map, terrain, rand);
@@ -189,10 +195,16 @@ function buildGrass(map: MapData, terrain: Terrain, rand: () => number): THREE.I
   if (samples.length === 0) return null;
 
   const placements: { x: number; z: number; s: number; tint: THREE.Color }[] = [];
-  const cap = 60000;
-  const green = new THREE.Color(0.42, 0.55, 0.28);
-  const gold = new THREE.Color(0.72, 0.62, 0.34);
-  const dry = new THREE.Color(0.55, 0.55, 0.3);
+  const cap = terrain.season === "winter" ? 30000 : 60000;
+  const pal = {
+    spring: { green: [0.36, 0.56, 0.24], gold: [0.5, 0.6, 0.3], dry: [0.42, 0.58, 0.26] },
+    summer: { green: [0.42, 0.55, 0.28], gold: [0.72, 0.62, 0.34], dry: [0.55, 0.55, 0.3] },
+    autumn: { green: [0.46, 0.48, 0.26], gold: [0.6, 0.5, 0.3], dry: [0.52, 0.46, 0.28] },
+    winter: { green: [0.46, 0.5, 0.34], gold: [0.5, 0.48, 0.36], dry: [0.48, 0.48, 0.36] },
+  }[terrain.season];
+  const green = new THREE.Color(...(pal.green as [number, number, number]));
+  const gold = new THREE.Color(...(pal.gold as [number, number, number]));
+  const dry = new THREE.Color(...(pal.dry as [number, number, number]));
   for (let i = 0; i < samples.length && placements.length < cap; i += 2) {
     const s = samples[i];
     for (let k = 0; k < 3; k++) {
@@ -306,89 +318,175 @@ function buildTown(
   }
 }
 
+export type TimeOfDay = "morning" | "noon" | "afternoon" | "sunset" | "night" | "cycle";
+
+const TIME_PRESETS: Record<Exclude<TimeOfDay, "cycle">, { el: number; az: number }> = {
+  morning: { el: 22, az: 118 },
+  noon: { el: 56, az: 190 },
+  afternoon: { el: 38, az: 245 },
+  sunset: { el: 7, az: 254 },
+  night: { el: -18, az: 300 },
+};
+
+const CYCLE_DAY_SECONDS = 480; // full day/night in 8 minutes
+
 /**
  * Atmosphere & lighting: physical sky shader (also used as environment map
- * for PBR ambient), sun with soft shadows that follow the rider, reflective
- * animated sea, drifting clouds, distance haze.
+ * for PBR ambient), sun/moon with soft shadows that follow the rider,
+ * reflective animated sea, distance haze. Supports fixed times of day and
+ * an animated day/night cycle.
  */
-export function buildEnvironment(
-  map: MapData,
-  scene: THREE.Scene,
-  renderer: THREE.WebGLRenderer
-): (t: number, focus: THREE.Vector3) => void {
-  // ---------- sky ----------
-  const sky = new Sky();
-  sky.scale.setScalar(20000);
-  scene.add(sky);
-  const sunDir = new THREE.Vector3();
-  // late-afternoon sun out over the sea (west = -x)
-  const elevation = THREE.MathUtils.degToRad(38);
-  const azimuth = THREE.MathUtils.degToRad(245);
-  sunDir.setFromSphericalCoords(1, Math.PI / 2 - elevation, azimuth);
-  const u = sky.material.uniforms;
-  u.turbidity.value = 4;
-  u.rayleigh.value = 2.0;
-  u.mieCoefficient.value = 0.004;
-  u.mieDirectionalG.value = 0.85;
-  u.sunPosition.value.copy(sunDir);
+export class Environment {
+  private scene: THREE.Scene;
+  private map: MapData;
+  private sky: Sky;
+  private envSky: Sky;
+  private envScene: THREE.Scene;
+  private pmrem: THREE.PMREMGenerator;
+  private sun: THREE.DirectionalLight;
+  private fill: THREE.HemisphereLight;
+  private water: Water;
+  private sunDir = new THREE.Vector3(0, 1, 0);
+  private mode: TimeOfDay = "afternoon";
+  private lastEnvMapAt = -999;
+  private envDirty = true;
 
-  // PBR ambient from the sky itself
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new THREE.Scene();
-  const envSky = new Sky();
-  envSky.scale.setScalar(20000);
-  envSky.material.uniforms.sunPosition.value.copy(sunDir);
-  envSky.material.uniforms.turbidity.value = 6;
-  envSky.material.uniforms.rayleigh.value = 1.6;
-  envScene.add(envSky);
-  scene.environment = pmrem.fromScene(envScene as unknown as THREE.Scene, 0.02).texture;
-  scene.environmentIntensity = 0.45;
+  constructor(map: MapData, scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+    this.scene = scene;
+    this.map = map;
 
-  scene.fog = new THREE.Fog(0xc9d9e6, 700, map.size * 1.9);
+    this.sky = new Sky();
+    this.sky.scale.setScalar(20000);
+    const u = this.sky.material.uniforms;
+    u.turbidity.value = 4;
+    u.rayleigh.value = 2.0;
+    u.mieCoefficient.value = 0.004;
+    u.mieDirectionalG.value = 0.85;
+    scene.add(this.sky);
 
-  // ---------- sun light + shadows ----------
-  const sun = new THREE.DirectionalLight(0xfff0dc, 3.0);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const ext = 260;
-  sun.shadow.camera.left = -ext;
-  sun.shadow.camera.right = ext;
-  sun.shadow.camera.top = ext;
-  sun.shadow.camera.bottom = -ext;
-  sun.shadow.camera.near = 50;
-  sun.shadow.camera.far = 1600;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.5;
-  sun.shadow.camera.updateProjectionMatrix();
-  scene.add(sun);
-  scene.add(sun.target);
+    this.pmrem = new THREE.PMREMGenerator(renderer);
+    this.envScene = new THREE.Scene();
+    this.envSky = new Sky();
+    this.envSky.scale.setScalar(20000);
+    this.envSky.material.uniforms.turbidity.value = 6;
+    this.envSky.material.uniforms.rayleigh.value = 1.6;
+    this.envScene.add(this.envSky);
 
-  const fill = new THREE.HemisphereLight(0xbfd4ea, 0x8a7a55, 0.22);
-  scene.add(fill);
+    scene.fog = new THREE.Fog(0xc9d9e6, 700, map.size * 1.9);
 
-  // ---------- sea ----------
-  const waterGeo = new THREE.PlaneGeometry(map.size * 2.2, map.size * 2.2);
-  const water = new Water(waterGeo, {
-    textureWidth: 512,
-    textureHeight: 512,
-    waterNormals: buildWaterNormals(),
-    sunDirection: sunDir.clone(),
-    sunColor: 0xfff0dc,
-    waterColor: 0x07273a,
-    distortionScale: 2.0,
-    fog: true,
-  });
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = 0.0;
-  water.name = "sea";
-  scene.add(water);
+    this.sun = new THREE.DirectionalLight(0xfff0dc, 3.0);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    const ext = 260;
+    this.sun.shadow.camera.left = -ext;
+    this.sun.shadow.camera.right = ext;
+    this.sun.shadow.camera.top = ext;
+    this.sun.shadow.camera.bottom = -ext;
+    this.sun.shadow.camera.near = 50;
+    this.sun.shadow.camera.far = 1600;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.5;
+    this.sun.shadow.camera.updateProjectionMatrix();
+    scene.add(this.sun);
+    scene.add(this.sun.target);
 
-  return (t: number, focus: THREE.Vector3) => {
-    (water.material as THREE.ShaderMaterial).uniforms.time.value = t * 0.5;
+    this.fill = new THREE.HemisphereLight(0xbfd4ea, 0x8a7a55, 0.22);
+    scene.add(this.fill);
+
+    const waterGeo = new THREE.PlaneGeometry(map.size * 2.2, map.size * 2.2);
+    this.water = new Water(waterGeo, {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals: buildWaterNormals(),
+      sunDirection: new THREE.Vector3(0, 1, 0),
+      sunColor: 0xfff0dc,
+      waterColor: 0x07273a,
+      distortionScale: 2.0,
+      fog: true,
+    });
+    this.water.rotation.x = -Math.PI / 2;
+    this.water.position.y = 0.0;
+    this.water.name = "sea";
+    scene.add(this.water);
+
+    this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
+  }
+
+  setTimeOfDay(mode: TimeOfDay): void {
+    this.mode = mode;
+    if (mode !== "cycle") {
+      const p = TIME_PRESETS[mode];
+      this.applySun(p.el, p.az);
+      this.envDirty = true;
+    }
+  }
+
+  /** Position sun/moon and re-tune all lights for the given solar elevation. */
+  private applySun(elDeg: number, azDeg: number): void {
+    const night = elDeg <= 1.5;
+    // at night the scene light becomes the moon, high in the east
+    const lightEl = night ? 42 : elDeg;
+    const lightAz = night ? 70 : azDeg;
+    this.sunDir.setFromSphericalCoords(
+      1,
+      Math.PI / 2 - THREE.MathUtils.degToRad(lightEl),
+      THREE.MathUtils.degToRad(lightAz)
+    );
+    // the sky shader always gets the true sun (below horizon = dark sky)
+    const skySun = new THREE.Vector3().setFromSphericalCoords(
+      1,
+      Math.PI / 2 - THREE.MathUtils.degToRad(elDeg),
+      THREE.MathUtils.degToRad(azDeg)
+    );
+    this.sky.material.uniforms.sunPosition.value.copy(skySun);
+    this.envSky.material.uniforms.sunPosition.value.copy(skySun);
+
+    const dayness = Math.max(0, Math.min(1, elDeg / 25)); // 0 night .. 1 high sun
+    if (night) {
+      this.sun.intensity = 0.55;
+      this.sun.color.set(0x8fa8cf); // moonlight
+      this.fill.intensity = 0.09;
+      (this.scene.fog as THREE.Fog).color.set(0x0b1322);
+      (this.water.material as THREE.ShaderMaterial).uniforms.sunColor.value.set(0x1c2940);
+    } else {
+      this.sun.intensity = 1.1 + 2.1 * dayness;
+      this.sun.color.copy(new THREE.Color(0xffc890).lerp(new THREE.Color(0xfff0dc), dayness));
+      this.fill.intensity = 0.08 + 0.16 * dayness;
+      (this.scene.fog as THREE.Fog).color.copy(
+        new THREE.Color(0xe5cfb4).lerp(new THREE.Color(0xc9d9e6), dayness)
+      );
+      (this.water.material as THREE.ShaderMaterial).uniforms.sunColor.value.set(0xfff0dc);
+    }
+    (this.water.material as THREE.ShaderMaterial).uniforms.sunDirection.value.copy(this.sunDir);
+  }
+
+  /** Refresh the PBR ambient (PMREM of the sky). Costs a few ms - throttled. */
+  private refreshEnvMap(): void {
+    const old = this.scene.environment;
+    this.scene.environment = this.pmrem.fromScene(this.envScene as unknown as THREE.Scene, 0.02).texture;
+    this.scene.environmentIntensity = 0.45;
+    if (old) old.dispose();
+  }
+
+  update(t: number, focus: THREE.Vector3): void {
+    (this.water.material as THREE.ShaderMaterial).uniforms.time.value = t * 0.5;
+    if (this.mode === "cycle") {
+      const phase = (t / CYCLE_DAY_SECONDS) % 1;
+      const el = Math.sin(phase * Math.PI) * 60 - 4;
+      const az = 95 + phase * 165;
+      this.applySun(el, az);
+      if (t - this.lastEnvMapAt > 4) {
+        this.lastEnvMapAt = t;
+        this.refreshEnvMap();
+      }
+    } else if (this.envDirty) {
+      this.envDirty = false;
+      this.refreshEnvMap();
+    }
     // shadow frustum follows the action
-    sun.target.position.copy(focus);
-    sun.position.copy(focus).addScaledVector(sunDir, 700);
-  };
+    this.sun.target.position.copy(focus);
+    this.sun.position.copy(focus).addScaledVector(this.sunDir, 700);
+  }
 }
 
 /** Tiling normal map for the water surface, generated from smooth noise. */

@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import type { MapData } from "../types";
-import { Terrain } from "./terrain";
+import { Terrain, type Season } from "./terrain";
 import { RoadNetwork } from "./road";
 import { Route, generateRoutes } from "./routes";
-import { buildScenery, buildEnvironment } from "./scenery";
+import { buildScenery, Environment } from "./scenery";
 
 /**
  * Owns everything that belongs to the current map: terrain, road network,
@@ -18,13 +18,14 @@ export class World {
   routes: Route[] = [];
   /** lower-resolution rebuilds while the editor drags things around */
   quality: "full" | "fast" = "full";
+  season: Season = "summer";
+  readonly environment: Environment;
   private worldGroup: THREE.Group | null = null;
-  private envUpdate: ((t: number, focus: THREE.Vector3) => void) | null = null;
 
   constructor(scene: THREE.Scene, map: MapData, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
     this.map = map;
-    this.envUpdate = buildEnvironment(map, scene, renderer);
+    this.environment = new Environment(map, scene, renderer);
     this.rebuild();
   }
 
@@ -37,7 +38,7 @@ export class World {
         if (mesh.geometry) mesh.geometry.dispose();
       });
     }
-    this.terrain = new Terrain(this.map, this.quality);
+    this.terrain = new Terrain(this.map, this.quality, this.season);
     this.network = new RoadNetwork(this.map, this.terrain);
     this.terrain.setRoad(this.network.allSamples);
     this.routes = generateRoutes(this.map, this.network);
@@ -57,6 +58,6 @@ export class World {
   }
 
   update(t: number, focus: THREE.Vector3): void {
-    this.envUpdate?.(t, focus);
+    this.environment.update(t, focus);
   }
 }

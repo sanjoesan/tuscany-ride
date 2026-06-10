@@ -56,6 +56,24 @@
         <label>Bike color
           <input id="inp-bike-color" type="color" value="#d6452c" />
         </label>
+        <label>Time of day
+          <select id="inp-time">
+            <option value="morning">Morning</option>
+            <option value="noon">Noon</option>
+            <option value="afternoon" selected>Afternoon</option>
+            <option value="sunset">Sunset</option>
+            <option value="night">Night</option>
+            <option value="cycle">Day/night cycle</option>
+          </select>
+        </label>
+        <label>Season
+          <select id="inp-season">
+            <option value="spring">Spring</option>
+            <option value="summer" selected>Summer</option>
+            <option value="autumn">Autumn</option>
+            <option value="winter">Winter</option>
+          </select>
+        </label>
       </div>
 
       <div class="menu-row">
@@ -145,6 +163,7 @@
         <button class="ed-tool btn small" data-tool="place">&#127794; Place</button>
         <button class="ed-tool btn small" data-tool="town">&#127968; Town</button>
       </div>
+      <div id="ed-status" class="ed-help" style="margin-top:6px"></div>
     </div>
     <div class="ed-section" id="ed-place-section" style="display:none">
       <b>Object</b>

@@ -7,8 +7,8 @@ import { Rider } from "./rider";
 import { Hud } from "./hud";
 import { RideRecorder, gameToGps } from "../fit/recorder";
 
-export type CameraMode = "chase" | "front" | "side";
-const CAMERA_MODES: CameraMode[] = ["chase", "front", "side"];
+export type CameraMode = "fpv" | "chase" | "front" | "side";
+const CAMERA_MODES: CameraMode[] = ["chase", "fpv", "front", "side"];
 
 /**
  * Active ride: moves the rider along the road from live trainer power,
@@ -89,6 +89,7 @@ export class RideController {
     // rider pose: in the right-hand lane, facing travel direction, tilted with the slope
     const right = new THREE.Vector3(at.dir.z, 0, -at.dir.x);
     const pos = at.pos.clone().addScaledVector(right, 1.4);
+    pos.y += 0.12; // asphalt sits slightly above the sampled centerline
     this.rider.object.position.copy(pos);
     // bike model is built facing +X; align +X with the travel direction
     this.rider.object.rotation.set(0, Math.atan2(-at.dir.z, at.dir.x), 0);
@@ -99,7 +100,14 @@ export class RideController {
     const up = new THREE.Vector3(0, 1, 0);
     let targetPos: THREE.Vector3;
     let lookAt: THREE.Vector3;
-    if (this.camMode === "chase") {
+    let lerpK = 1 - Math.exp(-dt * 3.2);
+    if (this.camMode === "fpv") {
+      // first person: eye height over the handlebars, subtle pedaling bob
+      const bob = Math.sin(this.rideTime * (this.telemetry.cadence / 60) * Math.PI * 2) * 0.025;
+      targetPos = pos.clone().addScaledVector(at.dir, 0.45).addScaledVector(up, 1.62 + bob);
+      lookAt = pos.clone().addScaledVector(at.dir, 26).addScaledVector(up, 1.1 + Math.atan(this.grade) * 18);
+      lerpK = 1 - Math.exp(-dt * 14); // tight, no rubber-banding
+    } else if (this.camMode === "chase") {
       targetPos = pos.clone().addScaledVector(at.dir, -9).addScaledVector(up, 3.6);
       lookAt = pos.clone().addScaledVector(at.dir, 7).addScaledVector(up, 1.2);
     } else if (this.camMode === "front") {
@@ -110,9 +118,9 @@ export class RideController {
       targetPos = pos.clone().addScaledVector(side, 11).addScaledVector(up, 3).addScaledVector(at.dir, 2);
       lookAt = pos.clone().addScaledVector(up, 1);
     }
-    const lerpK = 1 - Math.exp(-dt * 3.2);
+    this.rider.object.visible = this.camMode !== "fpv";
     this.camPos.lerp(targetPos, lerpK);
-    this.camTarget.lerp(lookAt, 1 - Math.exp(-dt * 5));
+    this.camTarget.lerp(lookAt, 1 - Math.exp(-dt * (this.camMode === "fpv" ? 14 : 5)));
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTarget);
 

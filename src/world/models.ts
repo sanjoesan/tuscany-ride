@@ -110,44 +110,68 @@ const TRUNK = 0x6e4f2e;
 
 export function buildModel(type: SceneryType): THREE.BufferGeometry {
   switch (type) {
-    case "cypress":
+    case "cypress": {
       // one tall stretched blob + tip = organic flame silhouette
+      const tall = 0.85 + Math.random() * 0.45;
+      const slim = 0.85 + Math.random() * 0.3;
       return mergeAll([
         cyl(0.1, 0.16, 0.7, TRUNK),
-        blob(1.0, 0x2a451e, 0, 3.3, 0, 3.0, 0.06),
-        blob(0.5, 0x2c4a20, 0, 6.5, 0, 2.0, 0.1),
-      ]);
-
-    case "pine": {
-      // umbrella canopy from overlapping blobs
-      return mergeAll([
-        cyl(0.22, 0.34, 3.8, TRUNK),
-        blob(2.3, 0x44632b, -1.1, 4.5, 0.4, 0.5),
-        blob(2.5, 0x4d6e2f, 0.7, 4.9, -0.5, 0.5),
-        blob(2.0, 0x3f5c26, 0.2, 4.4, 1.1, 0.5),
+        blob(1.0 * slim, 0x2a451e, 0, 3.3 * tall, 0, 3.0 * tall, 0.05 + Math.random() * 0.05),
+        blob(0.5 * slim, 0x2c4a20, 0, 6.5 * tall, 0, 2.0, 0.1),
       ]);
     }
 
-    case "olive":
+    case "pine": {
+      // umbrella canopy from overlapping blobs
+      const lean = (Math.random() - 0.5) * 1.2;
+      const spread = 0.85 + Math.random() * 0.45;
+      return mergeAll([
+        cyl(0.22, 0.34, 3.4 + Math.random() * 1.2, TRUNK),
+        blob(2.3 * spread, 0x44632b, -1.1 + lean, 4.5, 0.4, 0.5, 0.16),
+        blob(2.5 * spread, 0x4d6e2f, 0.7 + lean, 4.9, -0.5, 0.5, 0.16),
+        blob(2.0 * spread, 0x3f5c26, 0.2 + lean, 4.4, 1.1, 0.5, 0.16),
+      ]);
+    }
+
+    case "olive": {
+      const twist = Math.random() * 0.7;
       return mergeAll([
         cyl(0.16, 0.26, 1.2, 0x7a6648),
         cyl(0.1, 0.13, 0.9, 0x7a6648, 0.25, 0.9, 0.1),
-        blob(1.1, 0x79885c, -0.5, 2.0, 0.3, 0.75),
-        blob(1.25, 0x83926a, 0.5, 2.3, -0.3, 0.75),
-        blob(0.9, 0x707f54, 0.1, 2.6, 0.5, 0.75),
+        blob(0.9 + Math.random() * 0.4, 0x79885c, -0.5 - twist, 2.0, 0.3, 0.75, 0.18),
+        blob(1.0 + Math.random() * 0.45, 0x83926a, 0.5 + twist, 2.3, -0.3, 0.75, 0.18),
+        blob(0.8 + Math.random() * 0.3, 0x707f54, 0.1, 2.6, 0.5 - twist, 0.75, 0.18),
       ]);
+    }
 
     case "house": {
-      const w = 7, d = 9, h = 4.5;
+      // randomized per call - bake several variants so streets aren't clones
+      const w = 6 + Math.random() * 2.5;
+      const d = 8 + Math.random() * 3;
+      const h = 4 + Math.random() * 1.4;
       const plaster = PLASTER[Math.floor(Math.random() * PLASTER.length)];
-      return mergeAll([
+      const roofC = Math.random() < 0.5 ? TERRACOTTA : TERRACOTTA2;
+      const parts: THREE.BufferGeometry[] = [
         box(w, h, d, plaster),
-        roof(w + 0.7, 2.2, d + 0.7, TERRACOTTA, 0, h, 0),
-        // door + windows as dark insets
-        box(1.1, 2.2, 0.15, 0x4a3826, 0, 0, d / 2),
-        box(0.9, 1.1, 0.15, 0x3a4a55, -2, 2.2, d / 2),
-        box(0.9, 1.1, 0.15, 0x3a4a55, 2, 2.2, d / 2),
-      ]);
+        roof(w + 0.7, 1.8 + Math.random() * 0.9, d + 0.7, roofC, 0, h, 0),
+        box(1.1, 2.2, 0.15, 0x4a3826, (Math.random() - 0.5) * (w * 0.4), 0, d / 2), // door
+        cyl(0.22, 0.26, 1.1, 0xb39577, w * 0.25, h + 1.2, -d * 0.2, 6), // chimney
+      ];
+      // front windows with green shutters, upper floor
+      const winN = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < winN; i++) {
+        const wx = -w / 2 + (w / (winN + 1)) * (i + 1);
+        parts.push(box(0.85, 1.15, 0.15, 0x3a4a55, wx, h * 0.52, d / 2));
+        parts.push(box(0.3, 1.15, 0.1, 0x2e4a2e, wx - 0.62, h * 0.52, d / 2));
+        parts.push(box(0.3, 1.15, 0.1, 0x2e4a2e, wx + 0.62, h * 0.52, d / 2));
+      }
+      // side windows
+      for (const side of [1, -1]) {
+        for (let i = 0; i < 2; i++) {
+          parts.push(box(0.15, 1.05, 0.85, 0x3a4a55, (w / 2) * side, h * 0.5, -d / 4 + (i * d) / 2.2));
+        }
+      }
+      return mergeAll(parts);
     }
 
     case "villa": {
@@ -244,10 +268,94 @@ function buildDetailNormalMap(): THREE.CanvasTexture {
   return tex;
 }
 
-export const SHARED_MODEL_MATERIAL = new THREE.MeshStandardMaterial({
+/** Weathered plaster: light multiplicative texture with stains & streaks. */
+function buildStuccoTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#f2efe9";
+  ctx.fillRect(0, 0, S, S);
+  // patchy plaster discoloration
+  for (let i = 0; i < 90; i++) {
+    const a = 0.03 + Math.random() * 0.06;
+    ctx.fillStyle = Math.random() < 0.6 ? `rgba(140,120,90,${a})` : `rgba(90,85,80,${a})`;
+    const r = 8 + Math.random() * 36;
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * S, Math.random() * S, r, r * (0.4 + Math.random()), Math.random() * 3, 0, 7);
+    ctx.fill();
+  }
+  // vertical weather streaks from the top (under the eaves)
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * S;
+    const len = 20 + Math.random() * 70;
+    const grad = ctx.createLinearGradient(0, 0, 0, len);
+    grad.addColorStop(0, "rgba(95,85,70,0.16)");
+    grad.addColorStop(1, "rgba(95,85,70,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, 0, 1.5 + Math.random() * 2.5, len);
+  }
+  // fine grain
+  const img = ctx.getImageData(0, 0, S, S);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 14;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Leafy clumping: light/dark speckle that breaks up flat foliage. */
+function buildFoliageTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#e9efe2";
+  ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 2400; i++) {
+    const bright = Math.random();
+    const v = bright < 0.5 ? 120 + Math.random() * 60 : 225 + Math.random() * 30;
+    ctx.fillStyle = `rgba(${v * 0.92}, ${v}, ${v * 0.85}, ${0.25 + Math.random() * 0.4})`;
+    const r = 2 + Math.random() * 7;
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * S, Math.random() * S, r, r * 0.7, Math.random() * 3, 0, 7);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const detailNormal = buildDetailNormalMap();
+
+export const BUILDING_MATERIAL = new THREE.MeshStandardMaterial({
   vertexColors: true,
-  roughness: 0.92,
+  roughness: 0.94,
   metalness: 0,
-  normalMap: buildDetailNormalMap(),
-  normalScale: new THREE.Vector2(0.45, 0.45),
+  map: buildStuccoTexture(),
+  normalMap: detailNormal,
+  normalScale: new THREE.Vector2(0.5, 0.5),
 });
+
+export const PLANT_MATERIAL = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  roughness: 0.95,
+  metalness: 0,
+  map: buildFoliageTexture(),
+  normalMap: detailNormal,
+  normalScale: new THREE.Vector2(0.6, 0.6),
+});
+
+export const SHARED_MODEL_MATERIAL = BUILDING_MATERIAL;
+
+export function modelMaterial(type: SceneryType): THREE.MeshStandardMaterial {
+  return type === "cypress" || type === "pine" || type === "olive" ? PLANT_MATERIAL : BUILDING_MATERIAL;
+}

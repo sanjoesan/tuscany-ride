@@ -233,8 +233,8 @@ export class RoadNetwork {
       path.samples.forEach((s, i) => {
         const nx = -s.dirZ;
         const nz = s.dirX;
-        verts.push(s.x + nx * ROAD_HALF, s.y + 0.05, s.z + nz * ROAD_HALF);
-        verts.push(s.x - nx * ROAD_HALF, s.y + 0.05, s.z - nz * ROAD_HALF);
+        verts.push(s.x + nx * ROAD_HALF, s.y + 0.12, s.z + nz * ROAD_HALF);
+        verts.push(s.x - nx * ROAD_HALF, s.y + 0.12, s.z - nz * ROAD_HALF);
         uvs.push(0, s.dist / TILE_LEN, 1, s.dist / TILE_LEN);
         if (i < path.samples.length - 1) {
           const a = i * 2;
@@ -256,7 +256,7 @@ export class RoadNetwork {
     padGeo.rotateX(-Math.PI / 2);
     this.map.nodes.forEach((node, ni) => {
       const pad = new THREE.Mesh(padGeo, padMat);
-      pad.position.set(node.x, this.nodeY[ni] + 0.09, node.z);
+      pad.position.set(node.x, this.nodeY[ni] + 0.18, node.z);
       pad.receiveShadow = true;
       group.add(pad);
     });
