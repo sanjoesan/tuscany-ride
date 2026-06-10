@@ -2,7 +2,11 @@
 
 A free 3D indoor cycling game. Connects to FTMS smart trainers over Web Bluetooth,
 simulates a ride through a Tuscan landscape, and exports rides as Garmin-compatible
-.FIT files. No subscription, no multiplayer - by design.
+.FIT files. No subscription, no multiplayer - by design (NPC riders/traffic are local).
+
+Repo: https://github.com/sanjoesan/tuscany-ride - every push to `main` auto-deploys
+to **https://sanjoesan.github.io/tuscany-ride/** via GitHub Actions (Pages, workflow
+mode). User may later want Steam - keep it offline-capable and self-contained.
 
 **Rules for working in this repo**
 - Never use the word "Zwift" anywhere (code, comments, docs, chat). Say "commercial indoor cycling apps" instead.
@@ -26,15 +30,30 @@ Game requires Chrome or Edge (Web Bluetooth). Dev-screenshot helpers: open
 
 Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
-- `src/main.ts` - orchestrator: renderer, mode state machine (menu / riding / editor), UI wiring, main loop.
-- `src/types.ts` - shared types (`MapData`, `Telemetry`, `RideSample`...).
-- `src/world/` - world generation. **Build order matters**: `Terrain(map)` -> `Road(map, terrain)`
-  (spline + smoothed/grade-limited elevation) -> `terrain.setRoad(samples)` (terrain conforms to road
-  corridor via spatial hash) -> meshes + `buildScenery` (procedural vegetation/town from seed, then
-  manual `map.scenery` items; all instanced). `World.rebuild()` regenerates everything in place.
-  - `mapData.ts` - default "Toscana Classica" map, localStorage persistence, JSON validation.
-  - `models.ts` - low-poly merged geometries (vertex colors, one shared material). Use `mergeAll`,
-    never raw `mergeGeometries` (indexed/non-indexed mismatch returns null - was a real bug).
+- `src/main.ts` - orchestrator: renderer (ACES, PCFSoft shadows), mode state machine
+  (menu / riding / editor), route picker, deferred world boot behind #loading, UI wiring, main loop.
+- `src/types.ts` - shared types (`MapData` = seed/size/towns/nodes/edges/scenery, `Telemetry`...).
+- `src/world/` - world generation. **Build order matters**: `Terrain(map)` -> `RoadNetwork(map, terrain)`
+  (per-edge spline samples; node heights relaxed downward so nothing exceeds 10 %; junction pads) ->
+  `terrain.setRoad(network.allSamples)` (terrain conforms to corridors via spatial hash) ->
+  `generateRoutes` -> meshes + `buildScenery`. `World.rebuild()` regenerates in place;
+  `world.quality = "fast"` lowers texture/mesh res for live editor rebuilds.
+  - `network.ts` - seeded towns + junction nodes + Gabriel-graph edges (planar -> real crossings),
+    guaranteed coastal "lungomare" chain for flat routes.
+  - `routes.ts` - ~50 named circuits via random walk + Dijkstra home; every 3rd route is flat-biased
+    (starts at harbour town, avoids edges with >5.5 % grade). Stats: km, gain, max %, ETA.
+  - `road.ts` - `RoadNetwork` (edge sampling, grade limit 10 %, asphalt texture, junction pads),
+    `SampledPath.at(dist)` shared by `Route`.
+  - `terrain.ts` - heightfield (flat coastal plain < coastX+650, hills inland), painted 3072px albedo
+    (field patchwork, vineyard rows, plow furrows, grass verges near roads), detail normal map.
+  - `mapData.ts` - "Toscana Grande" from seed, localStorage (`roadgame.map.v2`), JSON validation.
+  - `models.ts` - merged low-poly geometries (vertex colors + shared detail-normal-map material).
+    Use `mergeAll`, never raw `mergeGeometries` (indexed/non-indexed mismatch returns null - real bug).
+  - `scenery.ts` - environment (Sky shader + PMREM ambient, sun shadows that follow the camera -
+    **must call shadow.camera.updateProjectionMatrix()**, Water sea), towns with street-lining houses,
+    olives/cypresses/pines with per-instance color jitter, 60k instanced grass tufts near roads.
+- `src/game/npc.ts` - NPC riders on routes, cars/trucks driving the network (right-hand traffic,
+  junction turns), pedestrians wandering towns. Rebuilt via `npcs.build()` after every map change.
 - `src/bluetooth/` - `ftms.ts` (FTMS trainer: Indoor Bike Data parse, control point grade writes
   throttled to 2 Hz; CPS power-meter fallback), `heartRate.ts`, `virtualTrainer.ts` (demo mode, arrow keys).
 - `src/sim/physics.ts` - power -> speed ODE (gravity/rolling/aero). Validated: 200 W flat = ~34 km/h.
@@ -49,14 +68,18 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
-**2026-06-10** - v0.1 complete and verified:
-- [x] Project scaffolded, Node installed via winget
-- [x] Tuscany world: terrain biome patchwork, sea west of coastX, procedural town with church/campanile, vineyards/olives/cypresses, 4.5 km road loop
-- [x] FTMS + CPS fallback + HR + demo mode
-- [x] Physics, HUD with elevation profile, ride recording
-- [x] FIT export (all 20 smoke tests pass, incl. CRC + message-stream walk)
-- [x] Garmin upload script
-- [x] World builder (road editing, object placement, town move, seed/hilliness, save/load)
-- [x] Headless screenshot verified: world renders (fixed mergeGeometries null bug)
+**2026-06-10 (2)** - v0.2 pushed & deployed:
+- [x] Repo + GitHub Pages auto-deploy (user account "sanjoesan"); Electron/.exe dropped on user request
+- [x] Realism pass: ACES tonemapping, Sky+PMREM ambient, sun shadows, Water sea, painted terrain
+      textures, textured asphalt with markings, organic trees, grass verges + 60k grass tufts
+- [x] 6x6 km world, road NETWORK with junctions, 5 named towns with streets through them
+- [x] 50 routes (12-55 km, 17 flat / 33 hilly, 0-10 % grades), route picker with stats
+- [x] NPC riders, cars/trucks, pedestrians; custom jersey/bike colors; right-hand lane riding
+- [x] All 25 smoke tests pass; user play-tested v0.1 with demo mode successfully ("works fine")
+- [ ] User-reported watch list: houses still simple (no per-face textures), sea looks grey in
+      headless shots (verify on real GPU), editor rebuilds are slow (~5 s fast quality)
 - [ ] Real-hardware FTMS test pending (needs the user's trainer)
-- [ ] Possible later: workout mode (ERG), more maps, sound, gamepad steering
+- [ ] Ideas later: ERG workout mode, sound, gamepad steering, Steam packaging
+
+**2026-06-10 (1)** - v0.1: scaffold, FTMS+CPS+HR+demo, physics, HUD, FIT export + Garmin upload
+script, single-loop world, world builder, all smoke tests green.
