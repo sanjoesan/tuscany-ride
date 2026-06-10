@@ -954,7 +954,79 @@ export class Environment {
     this.water.name = "sea";
     scene.add(this.water);
 
+    this.buildHorizonHills();
+    this.buildBirds();
+
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
+  }
+
+  /** Hazy hill silhouettes beyond the map edge - no more empty horizon. */
+  private buildHorizonHills(): void {
+    const n = new Noise2D(777);
+    const SEGS = 160;
+    const rInner = this.map.size * 0.78;
+    const verts: number[] = [];
+    const idx: number[] = [];
+    for (let i = 0; i <= SEGS; i++) {
+      const a = (i / SEGS) * Math.PI * 2;
+      const x = Math.cos(a);
+      const z = Math.sin(a);
+      // sea sits west (-x): keep that horizon flat, raise the land side
+      const landness = smoothstep(-0.55, 0.15, x);
+      const h = (40 + (n.fbm(Math.cos(a) * 2.2, Math.sin(a) * 2.2, 3) * 0.5 + 0.5) * 150) * landness;
+      verts.push(x * rInner, -20, z * rInner);
+      verts.push(x * (rInner + 1200), h, z * (rInner + 1200));
+      if (i < SEGS) {
+        const k = i * 2;
+        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({ color: 0x8a97a0, side: THREE.DoubleSide, fog: true });
+    const hills = new THREE.Mesh(geo, mat);
+    hills.name = "horizon-hills";
+    this.scene.add(hills);
+  }
+
+  // ---------- birds: small flocks circling over the landscape ----------
+  private flocks: { group: THREE.Group; cx: number; cz: number; r: number; h: number; speed: number; phase: number }[] = [];
+
+  private buildBirds(): void {
+    const rand = mulberry32(909);
+    // simple "V" silhouette
+    const birdGeo = new THREE.BufferGeometry();
+    birdGeo.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0, -0.6, 0.18, 0.5, 0, 0, 0.18, 0, 0, 0, -0.6, 0.18, -0.5, 0, 0, -0.18],
+        3
+      )
+    );
+    birdGeo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({ color: 0x1f242b, side: THREE.DoubleSide });
+    for (let f = 0; f < 3; f++) {
+      const group = new THREE.Group();
+      const count = 7 + Math.floor(rand() * 5);
+      for (let b = 0; b < count; b++) {
+        const bird = new THREE.Mesh(birdGeo, mat);
+        bird.position.set((rand() - 0.5) * 40, (rand() - 0.5) * 8, (rand() - 0.5) * 40);
+        bird.scale.setScalar(1.6 + rand());
+        group.add(bird);
+      }
+      this.scene.add(group);
+      this.flocks.push({
+        group,
+        cx: (rand() - 0.5) * this.map.size * 0.7,
+        cz: (rand() - 0.5) * this.map.size * 0.7,
+        r: 180 + rand() * 320,
+        h: 70 + rand() * 90,
+        speed: 0.03 + rand() * 0.025,
+        phase: rand() * 6.28,
+      });
+    }
   }
 
   setTimeOfDay(mode: TimeOfDay): void {
@@ -1019,6 +1091,15 @@ export class Environment {
 
   update(t: number, focus: THREE.Vector3): void {
     (this.water.material as THREE.ShaderMaterial).uniforms.time.value = t * 0.5;
+    // birds circle their roosts, wings flapping
+    for (const f of this.flocks) {
+      const a = t * f.speed + f.phase;
+      f.group.position.set(f.cx + Math.cos(a) * f.r, f.h + Math.sin(t * 0.3 + f.phase) * 8, f.cz + Math.sin(a) * f.r);
+      f.group.rotation.y = -a - Math.PI / 2;
+      f.group.children.forEach((bird, i) => {
+        bird.rotation.x = Math.sin(t * 7 + i * 1.7) * 0.5; // flap
+      });
+    }
     if (this.mode === "cycle") {
       const phase = (t / CYCLE_DAY_SECONDS) % 1;
       const el = Math.sin(phase * Math.PI) * 60 - 4;

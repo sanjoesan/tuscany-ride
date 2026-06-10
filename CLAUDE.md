@@ -81,7 +81,10 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 - [x] Telegraph poles + sagging wires along main roads (left side, instanced + LineSegments)
 - [x] Scenery placement now also avoids the river (riverBlocked in blocked())
 - [x] 31 smoke tests pass (4 new river checks); Chrome-verified: town streets look alive
-- [ ] Next loop iteration: birds, distant hill silhouette ring, verify bridge close-up, perf check
+- [x] (6b) Birds (3 flocks circling, flapping), horizon hill silhouette ring (flat over the sea),
+      dev hash #lookat=x,z for close-up orbits. Bridge close-up verified - river water needed
+      side:DoubleSide (same winding bug as the road once had) + diffuse blue Lambert.
+- [ ] Next: ambient audio?, sunflower fields, boat bobbing, perf pass, more creative ideas
 
 **2026-06-10 (5)** - v0.5 free roam + real network:
 - [x] Free-ride mode (route picker entry "-1"): turn at junctions with arrow chooser UI

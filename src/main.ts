@@ -82,6 +82,8 @@ let ride: RideController | null = null;
 let editor: Editor | null = null;
 let selectedRoute = Number(localStorage.getItem("roadgame.route") ?? 0);
 let menuAngle = 0;
+/** dev: #lookat=x,z orbits the menu camera around a specific spot close-up */
+let devLookAt: { x: number; z: number } | null = null;
 
 function populateRoutePicker(): void {
   const sel = $("route-select") as HTMLSelectElement;
@@ -367,6 +369,15 @@ function animate(): void {
     ride.update(dt);
   } else if (mode === "editor" && editor) {
     editor.update();
+  } else if (devLookAt) {
+    // dev close-up orbit (#lookat=x,z)
+    menuAngle += dt * 0.1;
+    camera.position.set(
+      devLookAt.x + Math.cos(menuAngle) * 70,
+      35,
+      devLookAt.z + Math.sin(menuAngle) * 70
+    );
+    camera.lookAt(devLookAt.x, world.terrain.height(devLookAt.x, devLookAt.z), devLookAt.z);
   } else {
     // menu: slow scenic orbit above the first town
     menuAngle += dt * 0.05;
@@ -402,6 +413,8 @@ setTimeout(() => {
   // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride,
   // #route=N / #time=night / #season=autumn force a specific setup
   if (location.hash.includes("noui")) $("menu").classList.add("hidden");
+  const lookM = /lookat=(-?\d+),(-?\d+)/.exec(location.hash);
+  if (lookM) devLookAt = { x: Number(lookM[1]), z: Number(lookM[2]) };
   const routeM = /route=(-?\d+)/.exec(location.hash);
   if (routeM) selectedRoute = Math.max(-1, Math.min(world.routes.length - 1, Number(routeM[1])));
   const timeM = /time=(\w+)/.exec(location.hash);

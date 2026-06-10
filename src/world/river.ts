@@ -100,13 +100,16 @@ export class River {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x2d6273,
-      roughness: 0.12,
-      metalness: 0.35,
+    // diffuse blue reads as water from every angle (reflective materials
+    // turn concrete-grey under the hazy sky)
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0x2576a3,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
     });
+    mat.emissive = new THREE.Color(0x0b2e44);
+    mat.emissiveIntensity = 0.35;
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = "river";
     return mesh;
