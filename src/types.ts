@@ -19,9 +19,29 @@ export interface SceneryItem {
   scale: number;
 }
 
+export interface TownData {
+  x: number;
+  z: number;
+  radius: number;
+  name: string;
+}
+
+/** A junction (or town piazza) in the road network. */
+export interface RoadNode {
+  x: number;
+  z: number;
+}
+
+/** A road between two nodes, optionally curving through via points. */
+export interface RoadEdge {
+  a: number;
+  b: number;
+  via: [number, number][];
+}
+
 export interface MapData {
   name: string;
-  /** terrain noise seed */
+  /** terrain noise seed; also seeds the road network and routes */
   seed: number;
   /** world is size x size meters, centered on origin */
   size: number;
@@ -29,9 +49,9 @@ export interface MapData {
   hilliness: number;
   /** x coordinate where land meets the sea (sea occupies x < coastX) */
   coastX: number;
-  /** closed-loop road control points [x, z] */
-  road: [number, number][];
-  town: { x: number; z: number; radius: number };
+  towns: TownData[];
+  nodes: RoadNode[];
+  edges: RoadEdge[];
   /** manually placed scenery (world builder); procedural scenery is derived from seed */
   scenery: SceneryItem[];
 }

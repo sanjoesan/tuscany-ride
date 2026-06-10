@@ -10,11 +10,7 @@ import type { SceneryType } from "../types";
 
 /** mergeGeometries requires all-indexed or all-non-indexed; normalize first. */
 function mergeAll(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const normalized = geos.map((g) => {
-    const ng = g.index ? g.toNonIndexed() : g;
-    ng.deleteAttribute("uv"); // not used; avoids attribute-set mismatches
-    return ng;
-  });
+  const normalized = geos.map((g) => (g.index ? g.toNonIndexed() : g));
   const merged = mergeGeometries(normalized);
   if (!merged) throw new Error("geometry merge failed");
   return merged;
@@ -199,17 +195,59 @@ export function buildModel(type: SceneryType): THREE.BufferGeometry {
   }
 }
 
-/** One segment of a vineyard row (instanced many times). */
-export function vineRowGeometry(): THREE.BufferGeometry {
-  return mergeAll([
-    box(7.5, 1.5, 0.45, 0x3f5f28, 0, 0.25, 0),
-    cyl(0.05, 0.05, 1.7, 0x7a6648, -3.4, 0, 0),
-    cyl(0.05, 0.05, 1.7, 0x7a6648, 3.4, 0, 0),
-  ]);
+/**
+ * Tiling surface-detail normal map (stucco / bark / foliage grain) so the
+ * flat-colored models catch light irregularly and stop looking lifeless.
+ */
+function buildDetailNormalMap(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(S, S);
+  const h = new Float32Array(S * S);
+  // value-noise-ish bumps from layered random blobs (tiles via wrap-around)
+  for (let layer = 0; layer < 3; layer++) {
+    const count = 220 * (layer + 1);
+    const r = 18 / (layer + 1);
+    for (let b = 0; b < count; b++) {
+      const cx = Math.random() * S;
+      const cy = Math.random() * S;
+      const amp = (Math.random() - 0.4) / (layer + 1);
+      const ri = Math.ceil(r);
+      for (let dy = -ri; dy <= ri; dy++) {
+        for (let dx = -ri; dx <= ri; dx++) {
+          const d2 = (dx * dx + dy * dy) / (r * r);
+          if (d2 > 1) continue;
+          const x = (((cx + dx) % S) + S) % S;
+          const y = (((cy + dy) % S) + S) % S;
+          h[(y | 0) * S + (x | 0)] += amp * (1 - d2);
+        }
+      }
+    }
+  }
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const dx = h[y * S + ((x + 1) % S)] - h[y * S + ((x - 1 + S) % S)];
+      const dy = h[((y + 1) % S) * S + x] - h[((y - 1 + S) % S) * S + x];
+      const i = (y * S + x) * 4;
+      img.data[i] = Math.max(0, Math.min(255, 128 - dx * 110));
+      img.data[i + 1] = Math.max(0, Math.min(255, 128 - dy * 110));
+      img.data[i + 2] = 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
 }
 
 export const SHARED_MODEL_MATERIAL = new THREE.MeshStandardMaterial({
   vertexColors: true,
   roughness: 0.92,
   metalness: 0,
+  normalMap: buildDetailNormalMap(),
+  normalScale: new THREE.Vector2(0.45, 0.45),
 });

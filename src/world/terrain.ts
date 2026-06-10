@@ -25,14 +25,17 @@ const SHOULDER = 14; // distance over which terrain blends back to natural heigh
  */
 export class Terrain {
   readonly map: MapData;
+  /** "fast" lowers texture/mesh resolution for live editing in the builder */
+  quality: "full" | "fast";
   private noise: Noise2D;
   private fieldNoise: Noise2D;
   private roadSamples: RoadSample[] = [];
   private grid = new Map<number, number[]>(); // spatial hash cell -> sample indices
   private gridCell = 30;
 
-  constructor(map: MapData) {
+  constructor(map: MapData, quality: "full" | "fast" = "full") {
     this.map = map;
+    this.quality = quality;
     this.noise = new Noise2D(map.seed);
     this.fieldNoise = new Noise2D(map.seed * 7 + 13);
   }
@@ -40,12 +43,13 @@ export class Terrain {
   /** Natural terrain height before the road is carved in. */
   baseHeight(x: number, z: number): number {
     const m = this.map;
-    // how far inland are we (0 at the coast, 1 deep inland)
-    const inland = smoothstep(m.coastX + 20, m.coastX + 750, x);
+    // how far inland are we (0 at the coast, 1 deep inland) - the first
+    // ~650 m stay a flat coastal plain so easy 0-5 % routes exist
+    const inland = smoothstep(m.coastX + 650, m.coastX + 1900, x);
     // gentle large hills + smaller detail
     const hills = this.noise.fbm(x * 0.0011 + 31.7, z * 0.0011 - 12.3, 4) * m.hilliness;
     const detail = this.noise.fbm(x * 0.006, z * 0.006, 3) * m.hilliness * 0.12;
-    let h = 2 + Math.max(0, hills * (0.18 + 0.82 * inland) + 0.55 * m.hilliness * inland) + detail * (0.3 + 0.7 * inland);
+    let h = 2 + Math.max(0, hills * (0.18 + 0.82 * inland) + 0.55 * m.hilliness * inland) + detail * (0.12 + 0.88 * inland);
 
     // sea floor: below the waterline west of the coast
     const seaBlend = smoothstep(m.coastX + 40, m.coastX - 120, x); // 0 on land, 1 at sea
@@ -54,20 +58,22 @@ export class Terrain {
     const beach = smoothstep(m.coastX + 130, m.coastX + 40, x) * (1 - seaBlend);
     h = lerp(h, 1.2, beach * 0.9);
 
-    // flatten the town area
-    const dt = Math.hypot(x - m.town.x, z - m.town.z);
-    if (dt < m.town.radius * 1.6) {
-      const townH = this.townHeight();
-      const f = 1 - smoothstep(m.town.radius * 0.85, m.town.radius * 1.6, dt);
-      h = lerp(h, townH, f);
+    // flatten every town area
+    for (const town of m.towns) {
+      const dt = Math.hypot(x - town.x, z - town.z);
+      if (dt < town.radius * 1.6) {
+        const f = 1 - smoothstep(town.radius * 0.85, town.radius * 1.6, dt);
+        h = lerp(h, this.townHeight(town), f);
+      }
     }
     return h;
   }
 
-  townHeight(): number {
+  townHeight(town: { x: number; z: number }): number {
     const m = this.map;
-    const inland = smoothstep(m.coastX + 20, m.coastX + 750, m.town.x);
-    return 3 + 6 * inland;
+    const inland = smoothstep(m.coastX + 20, m.coastX + 750, town.x);
+    const hills = this.noise.fbm(town.x * 0.0011 + 31.7, town.z * 0.0011 - 12.3, 2) * m.hilliness;
+    return Math.max(3, 3 + 6 * inland + Math.max(0, hills * 0.5 * inland));
   }
 
   /** Build the road elevation profile and the spatial hash used to conform terrain. */
@@ -136,7 +142,7 @@ export class Terrain {
    * vineyard row stripes, plow furrows, wheat grain, scrub patches,
    * wet/dry beach sand. Written per-pixel into the terrain texture.
    */
-  color(x: number, z: number, h: number, slope: number, out: THREE.Color): void {
+  color(x: number, z: number, h: number, slope: number, out: THREE.Color, roadDist: number | null = null): void {
     const m = this.map;
 
     // fine grain used everywhere so nothing looks flat
@@ -151,6 +157,17 @@ export class Terrain {
     const beach = smoothstep(m.coastX + 150, m.coastX + 60, x);
     if (beach > 0.55) {
       out.setRGB(0.78 + grain, 0.7 + grain, 0.52 + grain);
+      return;
+    }
+
+    // fresh green grass verge along the roads
+    if (roadDist !== null && roadDist < 12) {
+      const f = (1 - smoothstep(4.5, 12, roadDist)) * 0.7;
+      const gg = grain * 1.5;
+      out.setRGB(0.33 + gg, 0.47 + gg, 0.2 + gg);
+      const rest = new THREE.Color();
+      this.color(x, z, h, slope, rest, null);
+      out.lerp(rest, 1 - f);
       return;
     }
 
@@ -192,11 +209,13 @@ export class Terrain {
       out.setRGB(0.5 + v, 0.48 + v, 0.3 + v); // olive grove ground, dry grass
     }
 
-    // town gets warm stone paving
-    const dt = Math.hypot(x - m.town.x, z - m.town.z);
-    if (dt < m.town.radius) {
-      const f = 1 - smoothstep(m.town.radius * 0.7, m.town.radius, dt);
-      out.lerp(new THREE.Color(0.55 + grain, 0.48 + grain, 0.4 + grain), f * 0.85);
+    // towns get warm stone paving
+    for (const town of m.towns) {
+      const dt = Math.hypot(x - town.x, z - town.z);
+      if (dt < town.radius) {
+        const f = 1 - smoothstep(town.radius * 0.7, town.radius, dt);
+        out.lerp(new THREE.Color(0.55 + grain, 0.48 + grain, 0.4 + grain), f * 0.85);
+      }
     }
   }
 
@@ -217,8 +236,9 @@ export class Terrain {
    * Height/slope come from a coarse precomputed grid (bilinear) because
    * calling the full noise stack per pixel is far too slow.
    */
-  private buildAlbedoTexture(resolution = 2048): THREE.CanvasTexture {
+  private buildAlbedoTexture(): THREE.CanvasTexture {
     const m = this.map;
+    const resolution = this.quality === "fast" ? 1024 : m.size > 4000 ? 3072 : 2048;
 
     // coarse height grid (~9 m cells)
     const G = 256;
@@ -245,6 +265,21 @@ export class Terrain {
       );
     };
 
+    // coarse road-presence grid so we only do exact distance checks near roads
+    const P = 200;
+    const presence = new Uint8Array(P * P);
+    for (const s of this.roadSamples) {
+      const gx = Math.floor(((s.x + m.size / 2) / m.size) * P);
+      const gz = Math.floor(((s.z + m.size / 2) / m.size) * P);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const ix = gx + dx;
+          const iz = gz + dz;
+          if (ix >= 0 && ix < P && iz >= 0 && iz < P) presence[iz * P + ix] = 1;
+        }
+      }
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = resolution;
     const ctx = canvas.getContext("2d")!;
@@ -262,7 +297,12 @@ export class Terrain {
         const slope =
           (Math.abs(hAt(fx + 1 / G, fy) - hAt(fx - 1 / G, fy)) +
             Math.abs(hAt(fx, fy + 1 / G) - hAt(fx, fy - 1 / G))) * (8 / cellM);
-        this.color(x, z, h, slope, c);
+        let roadDist: number | null = null;
+        if (presence[Math.floor(fy * P) * P + Math.floor(fx * P)]) {
+          const near = this.nearestRoad(x, z, 14);
+          if (near) roadDist = near.dist;
+        }
+        this.color(x, z, h, slope, c, roadDist);
         const i = (py * resolution + px) * 4;
         data[i] = Math.max(0, Math.min(255, c.r * 255));
         data[i + 1] = Math.max(0, Math.min(255, c.g * 255));
@@ -306,7 +346,7 @@ export class Terrain {
 
   buildMesh(): THREE.Mesh {
     const m = this.map;
-    const segs = 280;
+    const segs = this.quality === "fast" ? 220 : Math.min(440, Math.max(280, Math.round(m.size / 14)));
     const geo = new THREE.PlaneGeometry(m.size, m.size, segs, segs);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;

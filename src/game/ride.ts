@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { World } from "../world/world";
+import type { Route } from "../world/routes";
 import type { Telemetry } from "../types";
 import { BikePhysics } from "../sim/physics";
 import { Rider } from "./rider";
@@ -16,8 +17,9 @@ const CAMERA_MODES: CameraMode[] = ["chase", "front", "side"];
 export class RideController {
   readonly physics = new BikePhysics();
   readonly recorder = new RideRecorder();
-  readonly rider = new Rider();
+  readonly rider: Rider;
   private world: World;
+  private route!: Route;
   private camera: THREE.PerspectiveCamera;
   private hud: Hud;
   private telemetry: Telemetry;
@@ -34,14 +36,23 @@ export class RideController {
   difficulty = 0.5;
   onGrade: (grade: number) => void = () => {};
 
-  constructor(world: World, camera: THREE.PerspectiveCamera, hud: Hud, telemetry: Telemetry) {
+  constructor(
+    world: World,
+    camera: THREE.PerspectiveCamera,
+    hud: Hud,
+    telemetry: Telemetry,
+    bikeColor = 0xd6452c,
+    jerseyColor = 0x2270c9
+  ) {
     this.world = world;
     this.camera = camera;
     this.hud = hud;
     this.telemetry = telemetry;
+    this.rider = new Rider(bikeColor, jerseyColor);
   }
 
-  start(massKg: number, difficulty: number): void {
+  start(massKg: number, difficulty: number, route: Route): void {
+    this.route = route;
     this.physics.massKg = massKg;
     this.physics.v = 0;
     this.difficulty = difficulty;
@@ -49,11 +60,11 @@ export class RideController {
     this.totalDist = 0;
     this.rideTime = 0;
     this.world.scene.add(this.rider.object);
-    this.hud.setRoad(this.world.road);
+    this.hud.setPath(route.samples, route.totalLength);
     this.hud.show();
     this.recorder.start();
     // place camera behind the start so the first frame isn't a jump cut
-    const at = this.world.road.at(0);
+    const at = route.at(0);
     this.camPos.copy(at.pos).addScaledVector(at.dir, -9).add(new THREE.Vector3(0, 4, 0));
   }
 
@@ -67,8 +78,7 @@ export class RideController {
   }
 
   update(dt: number): void {
-    const road = this.world.road;
-    const at = road.at(this.dist);
+    const at = this.route.at(this.dist);
     this.grade = at.grade;
 
     const v = this.physics.step(this.telemetry.power, this.grade, dt);
@@ -76,8 +86,9 @@ export class RideController {
     this.totalDist += v * dt;
     this.rideTime += dt;
 
-    // rider pose: on the road, facing travel direction, tilted with the slope
-    const pos = at.pos;
+    // rider pose: in the right-hand lane, facing travel direction, tilted with the slope
+    const right = new THREE.Vector3(at.dir.z, 0, -at.dir.x);
+    const pos = at.pos.clone().addScaledVector(right, 1.4);
     this.rider.object.position.copy(pos);
     // bike model is built facing +X; align +X with the travel direction
     this.rider.object.rotation.set(0, Math.atan2(-at.dir.z, at.dir.x), 0);

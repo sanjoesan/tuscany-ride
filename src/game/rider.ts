@@ -12,14 +12,14 @@ export class Rider {
   private legR: THREE.Group;
   private crankAngle = 0;
 
-  constructor() {
+  constructor(bikeColor = 0xd6452c, jerseyColor = 0x2270c9, withShadowBlob = true) {
     const g = new THREE.Group();
     g.name = "rider";
 
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0xd6452c, roughness: 0.35, metalness: 0.6 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: bikeColor, roughness: 0.35, metalness: 0.6 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.7, metalness: 0.3 });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9a47e, roughness: 0.75, metalness: 0 });
-    const jerseyMat = new THREE.MeshStandardMaterial({ color: 0x2270c9, roughness: 0.6, metalness: 0 });
+    const jerseyMat = new THREE.MeshStandardMaterial({ color: jerseyColor, roughness: 0.6, metalness: 0 });
     const shortsMat = new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: 0.65, metalness: 0 });
 
     // wheels: torus in the XY plane = vertical wheel rolling along +X
@@ -108,15 +108,17 @@ export class Rider {
     this.legL = mkLeg(1);
     this.legR = mkLeg(-1);
 
-    // soft fake contact shadow (real shadow maps are off for performance)
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.85, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false })
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.03;
-    shadow.scale.set(1.6, 1, 1);
-    g.add(shadow);
+    // soft contact shadow blob (cheaper than a casting rider)
+    if (withShadowBlob) {
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(0.85, 16),
+        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.03;
+      shadow.scale.set(1.6, 1, 1);
+      g.add(shadow);
+    }
 
     this.object = g;
   }

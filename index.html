@@ -28,6 +28,15 @@
         <span class="status">arrow keys control power</span>
       </div>
 
+      <div class="menu-row route-row">
+        <label class="route-label">&#128739;&#65039; Route
+          <select id="route-select"></select>
+        </label>
+      </div>
+      <div class="menu-row">
+        <span id="route-info" class="status"></span>
+      </div>
+
       <div class="settings-grid">
         <label>Rider weight (kg)
           <input id="inp-weight" type="number" min="30" max="200" step="1" value="75" />
@@ -40,6 +49,12 @@
         </label>
         <label>FTP (W, for zones)
           <input id="inp-ftp" type="number" min="50" max="600" step="5" value="200" />
+        </label>
+        <label>Jersey color
+          <input id="inp-jersey" type="color" value="#2270c9" />
+        </label>
+        <label>Bike color
+          <input id="inp-bike-color" type="color" value="#d6452c" />
         </label>
       </div>
 
@@ -158,14 +173,21 @@
       <button id="ed-exit" class="btn small danger">&#10005; Exit</button>
     </div>
     <div class="ed-help">
-      <b>Road tool:</b> drag orange points &middot; double-click road = insert point &middot; right-click point = delete<br/>
+      <b>Road tool:</b> drag <span style="color:#3da5ff">junctions</span> &amp; <span style="color:#ff8c1a">curve points</span> &middot; double-click road = insert curve point &middot; right-click curve point = delete<br/>
       <b>Place tool:</b> click ground = place &middot; R = rotate &middot; +/- = scale<br/>
-      <b>Select:</b> click object, Del = remove &middot; <b>Town:</b> click = move town<br/>
+      <b>Select:</b> click object, Del = remove &middot; <b>Town:</b> click = move nearest town<br/>
       <b>Camera:</b> drag = orbit &middot; wheel = zoom &middot; right-drag = pan
     </div>
   </div>
 
   <div id="toast" class="hidden"></div>
+
+  <div id="loading" class="overlay">
+    <div class="menu-card" style="text-align:center">
+      <h2>&#127757; Building Toscana&hellip;</h2>
+      <p class="hint">generating terrain, road network, villages and routes</p>
+    </div>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

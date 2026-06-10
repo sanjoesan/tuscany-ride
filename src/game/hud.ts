@@ -1,4 +1,4 @@
-import type { Road } from "../world/road";
+import type { RoadSample } from "../world/terrain";
 import type { RideStats } from "../types";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -22,11 +22,15 @@ export class Hud {
     $("hud").classList.add("hidden");
   }
 
-  setRoad(road: Road): void {
-    this.profile = road.samples.map((s) => ({ d: s.dist, y: s.y }));
-    this.total = road.totalLength;
-    this.minY = Math.min(...this.profile.map((p) => p.y));
-    this.maxY = Math.max(...this.profile.map((p) => p.y));
+  setPath(samples: RoadSample[], totalLength: number): void {
+    this.profile = samples.map((s) => ({ d: s.dist, y: s.y }));
+    this.total = totalLength;
+    this.minY = Infinity;
+    this.maxY = -Infinity;
+    for (const p of this.profile) {
+      if (p.y < this.minY) this.minY = p.y;
+      if (p.y > this.maxY) this.maxY = p.y;
+    }
   }
 
   update(v: {

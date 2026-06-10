@@ -1,45 +1,38 @@
 import type { MapData } from "../types";
+import { generateNetwork } from "./network";
 
 /**
- * The default map: "Toscana Classica".
- * West (negative x) is the Tyrrhenian sea with a beach, a small Italian town
- * sits near the coast, and the road loops inland through rolling farm hills.
+ * The default map: "Toscana Grande" - a 6 x 6 km region with the Tyrrhenian
+ * sea in the west, several towns and villages, and a country-road network
+ * full of junctions. Towns, junctions and roads all derive from the seed.
  */
 export function defaultMap(): MapData {
+  return mapFromSeed(1337);
+}
+
+export function mapFromSeed(seed: number, size = 6000, hilliness = 75): MapData {
+  const coastX = -size * 0.31;
+  const net = generateNetwork(seed, size, coastX);
   return {
-    name: "Toscana Classica",
-    seed: 1337,
-    size: 2400,
-    hilliness: 70,
-    coastX: -720,
-    town: { x: -470, z: 140, radius: 150 },
-    road: [
-      [-500, 80],     // town main street
-      [-585, -220],   // lungomare (coast road)
-      [-470, -520],   // turning inland
-      [-140, -690],   // through the wheat fields
-      [280, -660],    // vineyard flats
-      [640, -470],    // start of the climb
-      [840, -120],    // high point in the hills
-      [760, 290],     // ridge road
-      [470, 590],     // descent between olive groves
-      [60, 700],      // cypress alley
-      [-310, 540],    // back towards the coast
-      [-540, 330],    // beach approach into town
-    ],
+    name: "Toscana Grande",
+    seed,
+    size,
+    hilliness,
+    coastX,
+    towns: net.towns,
+    nodes: net.nodes,
+    edges: net.edges,
     scenery: [],
   };
 }
 
-const STORAGE_KEY = "roadgame.map";
+const STORAGE_KEY = "roadgame.map.v2";
 
 export function loadSavedMap(): MapData | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const m = JSON.parse(raw) as MapData;
-    if (!Array.isArray(m.road) || m.road.length < 3) return null;
-    return { ...defaultMap(), ...m };
+    return validateMap(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -54,18 +47,29 @@ export function clearSavedMap(): void {
 }
 
 export function validateMap(m: unknown): MapData {
-  const d = defaultMap();
   if (typeof m !== "object" || m === null) throw new Error("Not a map file");
   const map = m as Partial<MapData>;
-  if (!Array.isArray(map.road) || map.road.length < 3) throw new Error("Map needs a road with at least 3 points");
+  if (!Array.isArray(map.nodes) || !Array.isArray(map.edges) || map.edges.length < 1) {
+    throw new Error("Map needs a road network (nodes + edges) - old single-road maps are not supported");
+  }
+  const seed = typeof map.seed === "number" ? map.seed : 1337;
+  const size = typeof map.size === "number" ? Math.max(2000, Math.min(12000, map.size)) : 6000;
+  const d = mapFromSeed(seed, size);
+  const nodes = map.nodes.map((n) => ({ x: Number(n.x), z: Number(n.z) }));
+  for (const e of map.edges) {
+    if (typeof e.a !== "number" || typeof e.b !== "number" || e.a >= nodes.length || e.b >= nodes.length) {
+      throw new Error("Map has an invalid road edge");
+    }
+  }
   return {
     name: typeof map.name === "string" ? map.name : "Custom Map",
-    seed: typeof map.seed === "number" ? map.seed : d.seed,
-    size: typeof map.size === "number" ? Math.max(800, Math.min(6000, map.size)) : d.size,
+    seed,
+    size,
     hilliness: typeof map.hilliness === "number" ? map.hilliness : d.hilliness,
     coastX: typeof map.coastX === "number" ? map.coastX : d.coastX,
-    town: map.town && typeof map.town.x === "number" ? map.town : d.town,
-    road: map.road.map((p) => [Number(p[0]), Number(p[1])] as [number, number]),
+    towns: Array.isArray(map.towns) && map.towns.length ? map.towns : d.towns,
+    nodes,
+    edges: map.edges.map((e) => ({ a: e.a, b: e.b, via: Array.isArray(e.via) ? e.via : [] })),
     scenery: Array.isArray(map.scenery) ? map.scenery : [],
   };
 }

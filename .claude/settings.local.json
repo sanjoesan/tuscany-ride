@@ -41,7 +41,11 @@
       "PowerShell(npm run *)",
       "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;$env:Path\"; npx electron-builder --win)",
       "PowerShell(gh *)",
-      "PowerShell(npm uninstall *)"
+      "PowerShell(npm uninstall *)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;$env:Path\"; npx tsx tools/smoketest.ts 2>&1 | Select-String \"flat|FAIL|passed|Sample|km,\")",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;$env:Path\"; npx tsx tools/smoketest.ts 2>&1 | Select-String \"FAIL|flat|passed|Sample|km,\")",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;$env:Path\"; npx tsx tools/smoketest.ts 2>&1 | Select-String \"FAIL|flat and|passed\")",
+      "PowerShell($edge = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"; & $edge --headless=new --enable-gpu --use-angle=d3d11 --screenshot=\"E:\\\\Roadgame\\\\shot-v2.png\" --window-size=1600,900 --virtual-time-budget=60000 --hide-scrollbars \"http://localhost:5173/#autoride=120\" 2>$null; Start-Sleep 2; Get-Item E:\\\\Roadgame\\\\shot-v2.png -ErrorAction SilentlyContinue | Select-Object Length)"
     ]
   }
 }

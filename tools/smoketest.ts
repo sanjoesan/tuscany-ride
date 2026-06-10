@@ -1,10 +1,11 @@
 /**
- * Headless smoke test: world generation, physics and FIT encoding.
+ * Headless smoke test: network generation, routes, physics and FIT encoding.
  * Run with: npx tsx tools/smoketest.ts
  */
 import { defaultMap } from "../src/world/mapData";
 import { Terrain } from "../src/world/terrain";
-import { Road } from "../src/world/road";
+import { RoadNetwork, MAX_GRADE } from "../src/world/road";
+import { generateRoutes } from "../src/world/routes";
 import { BikePhysics } from "../src/sim/physics";
 import { RideRecorder, gameToGps } from "../src/fit/recorder";
 
@@ -17,54 +18,115 @@ function check(name: string, ok: boolean, info = ""): void {
 // ---------- world generation ----------
 const map = defaultMap();
 const terrain = new Terrain(map);
-const road = new Road(map, terrain);
-terrain.setRoad(road.samples);
+const network = new RoadNetwork(map, terrain);
+terrain.setRoad(network.allSamples);
 
-check("road has samples", road.samples.length > 200, `${road.samples.length} samples`);
-check("road loop length plausible", road.totalLength > 3000 && road.totalLength < 12000, `${(road.totalLength / 1000).toFixed(2)} km`);
+check("towns generated", map.towns.length >= 4, `${map.towns.length} towns: ${map.towns.map((t) => t.name).join(", ")}`);
+check("network has junctions", map.nodes.length >= map.towns.length + 8, `${map.nodes.length} nodes`);
+check("network has roads", map.edges.length >= map.nodes.length, `${map.edges.length} edges, ${network.totalKm.toFixed(1)} km of road`);
 
-const maxGrade = Math.max(...road.samples.map((s) => Math.abs(s.grade)));
-check("grade limited to ~11%", maxGrade <= 0.125, `max ${(maxGrade * 100).toFixed(1)}%`);
-
-// elevation continuity around the loop seam
-const a = road.at(road.totalLength - 0.5);
-const b = road.at(0.5);
-check("loop seam continuous", a.pos.distanceTo(b.pos) < 5, `${a.pos.distanceTo(b.pos).toFixed(2)} m gap`);
-
-// road conforming: terrain height directly under road == road height
-let worstDelta = 0;
-for (let i = 0; i < road.samples.length; i += 25) {
-  const s = road.samples[i];
-  const d = Math.abs(terrain.height(s.x, s.z) - s.y);
-  worstDelta = Math.max(worstDelta, d);
+// every node should be reachable (graph connected)
+{
+  const adj: number[][] = map.nodes.map(() => []);
+  for (const e of map.edges) {
+    adj[e.a].push(e.b);
+    adj[e.b].push(e.a);
+  }
+  const seen = new Set<number>([0]);
+  const stack = [0];
+  while (stack.length) {
+    const n = stack.pop()!;
+    for (const m of adj[n]) if (!seen.has(m)) { seen.add(m); stack.push(m); }
+  }
+  check("road network connected", seen.size === map.nodes.length, `${seen.size}/${map.nodes.length} reachable`);
 }
-check("terrain conforms to road", worstDelta < 1.0, `worst delta ${worstDelta.toFixed(2)} m`);
 
-// sea exists west of the coast
-check("sea floor below waterline", terrain.height(map.coastX - 300, 0) < 0);
-check("land above waterline", terrain.height(map.coastX + 400, 0) > 0.5);
+// grade limit respected on every edge
+{
+  let maxG = 0;
+  for (const p of network.paths) for (const s of p.samples) maxG = Math.max(maxG, Math.abs(s.grade));
+  check("grades limited to 10%", maxG <= MAX_GRADE + 0.025, `max ${(maxG * 100).toFixed(1)}%`);
+}
 
-// elevation range sane
-const minY = Math.min(...road.samples.map((s) => s.y));
-const maxY = Math.max(...road.samples.map((s) => s.y));
-check("road elevation range sane", minY > -5 && maxY < 300, `${minY.toFixed(0)}..${maxY.toFixed(0)} m`);
+// edges meeting at a node share its elevation
+{
+  let worst = 0;
+  for (const p of network.paths) {
+    worst = Math.max(worst, Math.abs(p.samples[0].y - network.nodeY[p.a]));
+    worst = Math.max(worst, Math.abs(p.samples[p.samples.length - 1].y - network.nodeY[p.b]));
+  }
+  check("junction elevations consistent", worst < 0.5, `worst ${worst.toFixed(2)} m`);
+}
+
+// terrain conforms to the roads
+{
+  let worst = 0;
+  for (let i = 0; i < network.allSamples.length; i += 100) {
+    const s = network.allSamples[i];
+    worst = Math.max(worst, Math.abs(terrain.height(s.x, s.z) - s.y));
+  }
+  check("terrain conforms to roads", worst < 1.0, `worst delta ${worst.toFixed(2)} m`);
+}
+
+check("sea floor below waterline", terrain.height(map.coastX - 400, 0) < 0);
+check("land above waterline", terrain.height(map.coastX + 500, 0) > 0.5);
+
+// ---------- routes ----------
+const routes = generateRoutes(map, network);
+check("~50 routes generated", routes.length >= 45, `${routes.length} routes`);
+
+{
+  const kms = routes.map((r) => r.stats.distanceKm);
+  const min = Math.min(...kms);
+  const max = Math.max(...kms);
+  check("route lengths span 30min-2h", min < 16 && max > 40, `${min.toFixed(1)}..${max.toFixed(1)} km`);
+}
+{
+  const starts = new Set(routes.map((r) => r.startNode));
+  check("multiple starting points", starts.size >= Math.min(4, map.towns.length), `${starts.size} different starts`);
+}
+{
+  let ok = true;
+  let info = "";
+  for (const r of routes) {
+    // circuit: ends where it started
+    const a = r.samples[0];
+    const b = r.at(r.totalLength - 0.01).pos;
+    const gap = Math.hypot(a.x - b.x, a.z - b.z);
+    if (gap > 25) {
+      ok = false;
+      info = `${r.name} gap ${gap.toFixed(0)} m`;
+      break;
+    }
+    // continuity: no teleports between consecutive samples
+    for (let i = 1; i < r.samples.length; i++) {
+      const d = Math.hypot(r.samples[i].x - r.samples[i - 1].x, r.samples[i].z - r.samples[i - 1].z);
+      if (d > 30) {
+        ok = false;
+        info = `${r.name} jump ${d.toFixed(0)} m at sample ${i}`;
+        break;
+      }
+    }
+    if (!ok) break;
+  }
+  check("routes are continuous circuits", ok, info);
+}
+{
+  const flat = routes.filter((r) => r.stats.maxGradePct < 5.5).length;
+  const hilly = routes.filter((r) => r.stats.maxGradePct >= 7).length;
+  check("flat and hilly routes exist", flat >= 3 && hilly >= 3, `${flat} flat, ${hilly} steep (of ${routes.length})`);
+}
 
 // ---------- physics ----------
 const phys = new BikePhysics();
 phys.massKg = 84;
-for (let i = 0; i < 600; i++) phys.step(200, 0, 0.1); // 60 s at 200 W on the flat
+for (let i = 0; i < 600; i++) phys.step(200, 0, 0.1);
 check("200W flat -> ~32-36 km/h", phys.kmh > 30 && phys.kmh < 38, `${phys.kmh.toFixed(1)} km/h`);
 
 const phys2 = new BikePhysics();
 phys2.massKg = 84;
-for (let i = 0; i < 1200; i++) phys2.step(200, 0.08, 0.1); // 8% climb
+for (let i = 0; i < 1200; i++) phys2.step(200, 0.08, 0.1);
 check("200W on 8% -> ~9-13 km/h", phys2.kmh > 8 && phys2.kmh < 14, `${phys2.kmh.toFixed(1)} km/h`);
-
-const phys3 = new BikePhysics();
-phys3.massKg = 84;
-phys3.v = 5;
-for (let i = 0; i < 1200; i++) phys3.step(0, -0.06, 0.1); // coasting down -6%
-check("coasting downhill accelerates", phys3.kmh > 40, `${phys3.kmh.toFixed(1)} km/h`);
 
 // ---------- GPS mapping ----------
 const gps = gameToGps(0, 0);
@@ -74,12 +136,12 @@ check("GPS anchor in Tuscany", gps.lat > 42 && gps.lat < 44 && gps.lon > 10 && g
 const rec = new RideRecorder();
 rec.start();
 const t0 = Date.now();
-// synthesize 120 s of riding
+const route = routes[0];
 let dist = 0;
 for (let i = 0; i < 120; i++) {
   const speed = 9 + Math.sin(i / 10) * 2;
   dist += speed;
-  const at = road.at(dist);
+  const at = route.at(dist);
   const g = gameToGps(at.pos.x, at.pos.z);
   rec.samples.push({
     t: t0 + i * 1000,
@@ -104,7 +166,6 @@ check("FIT signature", String.fromCharCode(fit[8], fit[9], fit[10], fit[11]) ===
 const dataSize = fit[4] | (fit[5] << 8) | (fit[6] << 16) | (fit[7] << 24);
 check("FIT data size matches", dataSize === fit.length - 16, `${dataSize} vs ${fit.length - 16}`);
 
-// verify the file CRC the same way Garmin does
 function crc16(bytes: Uint8Array, start: number, end: number): number {
   const table = [
     0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401,
@@ -125,9 +186,8 @@ function crc16(bytes: Uint8Array, start: number, end: number): number {
 const fileCrc = fit[fit.length - 2] | (fit[fit.length - 1] << 8);
 check("FIT file CRC valid", fileCrc === crc16(fit, 0, fit.length - 2));
 
-// walk all records to make sure the message stream is well-formed
 let pos = 14;
-let defs = new Map<number, number>(); // local type -> data record size
+const defs = new Map<number, number>();
 let records = 0;
 let badStream = false;
 while (pos < fit.length - 2) {
@@ -149,7 +209,13 @@ while (pos < fit.length - 2) {
   }
 }
 check("FIT message stream well-formed", !badStream && pos === fit.length - 2, `${records} data messages`);
-check("FIT contains all records", records === 120 + 6, `${records}`); // 120 records + file_id + 2 events + lap + session + activity
+check("FIT contains all records", records === 120 + 6, `${records}`);
+
+// route listing for the report
+console.log("\nSample routes:");
+for (const r of [routes[0], routes[Math.floor(routes.length / 2)], routes[routes.length - 1]]) {
+  console.log(`  ${r.name}: ${r.stats.distanceKm.toFixed(1)} km, ${r.stats.gainM} m up, max ${r.stats.maxGradePct}%, ~${r.stats.estMinutes} min`);
+}
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

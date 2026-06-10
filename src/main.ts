@@ -7,6 +7,7 @@ import { FtmsTrainer } from "./bluetooth/ftms";
 import { HeartRateSensor } from "./bluetooth/heartRate";
 import { VirtualTrainer } from "./bluetooth/virtualTrainer";
 import { Editor } from "./editor/editor";
+import { NpcManager } from "./game/npc";
 import type { Telemetry } from "./types";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -30,9 +31,6 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-const world = new World(scene, loadSavedMap() ?? defaultMap(), renderer);
-$("map-name").textContent = world.map.name;
-
 // ---------------- telemetry ----------------
 const telemetry: Telemetry = { power: 0, cadence: 0, heartRate: 0, trainerSpeed: 0 };
 let powerTimeout: number | null = null;
@@ -40,7 +38,6 @@ let powerTimeout: number | null = null;
 function onTrainerData(d: Partial<Telemetry>): void {
   if (d.power !== undefined) {
     telemetry.power = d.power;
-    // zero power if no update arrives for a while (trainer stopped sending)
     if (powerTimeout !== null) clearTimeout(powerTimeout);
     powerTimeout = window.setTimeout(() => (telemetry.power = 0), 4000);
   }
@@ -75,28 +72,62 @@ function updateStartButton(): void {
   ($("btn-start-ride") as HTMLButtonElement).disabled = !(trainer.connected || virtual !== null);
 }
 
-// ---------------- modes ----------------
+// ---------------- modes & world (built deferred, behind a loading screen) ----------------
 type Mode = "menu" | "riding" | "editor";
 let mode: Mode = "menu";
 const hud = new Hud();
+let world: World;
+let npcs: NpcManager;
 let ride: RideController | null = null;
 let editor: Editor | null = null;
-
-// menu flythrough camera state
+let selectedRoute = Number(localStorage.getItem("roadgame.route") ?? 0);
 let menuAngle = 0;
 
+function populateRoutePicker(): void {
+  const sel = $("route-select") as HTMLSelectElement;
+  sel.innerHTML = "";
+  world.routes.forEach((r, i) => {
+    const opt = document.createElement("option");
+    const h = Math.floor(r.stats.estMinutes / 60);
+    const min = r.stats.estMinutes % 60;
+    const time = h > 0 ? `${h}h${String(min).padStart(2, "0")}` : `${min} min`;
+    opt.value = String(i);
+    opt.textContent = `${r.name} - ${r.stats.distanceKm.toFixed(1)} km · ~${time}`;
+    sel.append(opt);
+  });
+  if (selectedRoute >= world.routes.length) selectedRoute = 0;
+  sel.value = String(selectedRoute);
+  updateRouteInfo();
+  sel.onchange = () => {
+    selectedRoute = Number(sel.value);
+    localStorage.setItem("roadgame.route", sel.value);
+    updateRouteInfo();
+  };
+}
+
+function updateRouteInfo(): void {
+  const r = world.routes[selectedRoute];
+  if (!r) return;
+  $("route-info").textContent =
+    `${r.stats.distanceKm.toFixed(1)} km · ${r.stats.gainM} m climbing · max ${r.stats.maxGradePct}% · ~${r.stats.estMinutes} min at 29 km/h`;
+}
+
 function startRide(): void {
+  const route = world.routes[selectedRoute];
+  if (!route) return;
   const weight = Number(($("inp-weight") as HTMLInputElement).value) || 75;
   const bikeWeight = Number(($("inp-bike-weight") as HTMLInputElement).value) || 9;
   const difficulty = Number(($("inp-difficulty") as HTMLInputElement).value) / 100;
   saveSettings();
 
-  ride = new RideController(world, camera, hud, telemetry);
+  const bikeColor = parseInt(($("inp-bike-color") as HTMLInputElement).value.slice(1), 16);
+  const jerseyColor = parseInt(($("inp-jersey") as HTMLInputElement).value.slice(1), 16);
+  ride = new RideController(world, camera, hud, telemetry, bikeColor, jerseyColor);
   ride.onGrade = (g) => trainer.setGrade(g);
-  ride.start(weight + bikeWeight, difficulty);
+  ride.start(weight + bikeWeight, difficulty, route);
   $("menu").classList.add("hidden");
   mode = "riding";
-  toast(`Ride started on "${world.map.name}" - buon viaggio!`);
+  toast(`${route.name} - ${route.stats.distanceKm.toFixed(1)} km. Buon viaggio!`);
 }
 
 function endRide(): void {
@@ -115,10 +146,17 @@ function endRide(): void {
 function openEditor(): void {
   $("menu").classList.add("hidden");
   mode = "editor";
+  npcs.dispose();
+  world.quality = "fast";
+  world.rebuild();
   editor = new Editor(world, camera, renderer);
   editor.onExit = () => {
     editor = null;
     mode = "menu";
+    world.quality = "full";
+    world.rebuild();
+    npcs.build();
+    populateRoutePicker();
     $("menu").classList.remove("hidden");
     $("map-name").textContent = world.map.name;
   };
@@ -131,6 +169,8 @@ function saveSettings(): void {
     bike: ($("inp-bike-weight") as HTMLInputElement).value,
     diff: ($("inp-difficulty") as HTMLInputElement).value,
     ftp: ($("inp-ftp") as HTMLInputElement).value,
+    jersey: ($("inp-jersey") as HTMLInputElement).value,
+    bikeColor: ($("inp-bike-color") as HTMLInputElement).value,
   };
   localStorage.setItem("roadgame.settings", JSON.stringify(s));
 }
@@ -144,6 +184,8 @@ function loadSettings(): void {
     if (s.bike) ($("inp-bike-weight") as HTMLInputElement).value = s.bike;
     if (s.diff) ($("inp-difficulty") as HTMLInputElement).value = s.diff;
     if (s.ftp) ($("inp-ftp") as HTMLInputElement).value = s.ftp;
+    if (s.jersey) ($("inp-jersey") as HTMLInputElement).value = s.jersey;
+    if (s.bikeColor) ($("inp-bike-color") as HTMLInputElement).value = s.bikeColor;
   } catch {
     /* ignore */
   }
@@ -206,6 +248,8 @@ $("btn-back-menu").onclick = () => {
     const map = validateMap(JSON.parse(await file.text()));
     world.setMap(map);
     saveMapLocal(map);
+    npcs.build();
+    populateRoutePicker();
     $("map-name").textContent = map.name;
     toast(`Map "${map.name}" loaded`);
   } catch (err) {
@@ -217,62 +261,75 @@ $("btn-back-menu").onclick = () => {
 $("btn-reset-map").onclick = () => {
   clearSavedMap();
   world.setMap(defaultMap());
+  npcs.build();
+  populateRoutePicker();
   $("map-name").textContent = world.map.name;
-  toast("Back to Toscana Classica");
+  toast("Back to Toscana Grande");
 };
 
 window.addEventListener("keydown", (e) => {
   if (mode === "riding" && (e.key === "c" || e.key === "C")) ride?.cycleCamera();
 });
 
-// dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride
-if (location.hash.includes("noui")) $("menu").classList.add("hidden");
-if (location.hash.includes("autoride")) {
-  virtual = new VirtualTrainer(onTrainerData);
-  virtual.start();
-  telemetry.power = 180;
-  telemetry.cadence = 88;
-  updateStartButton();
-  startRide();
-  // optional fast-forward: #autoride=120 simulates 120 s before the first frame
-  const ff = Number(/autoride=(\d+)/.exec(location.hash)?.[1] ?? 0);
-  const r = ride as RideController | null; // assigned inside startRide()
-  if (ff > 0 && r) {
-    for (let i = 0; i < ff * 10; i++) r.update(0.1);
-  }
-  if (location.hash.includes("cam2") && r) {
-    r.cycleCamera();
-    r.cycleCamera(); // side view, for shadow/model inspection
-    r.update(0.5);
-  }
-}
-
 // ---------------- main loop ----------------
 const clock = new THREE.Clock();
 
 function animate(): void {
   requestAnimationFrame(animate);
+  if (!world) return;
   const dt = Math.min(clock.getDelta(), 0.1);
   const t = clock.elapsedTime;
   world.update(t, camera.position);
+  if (mode !== "editor") npcs?.update(dt, t);
 
   if (mode === "riding" && ride) {
     ride.update(dt);
   } else if (mode === "editor" && editor) {
     editor.update();
   } else {
-    // menu: slow scenic orbit above the town
+    // menu: slow scenic orbit above the first town
     menuAngle += dt * 0.05;
-    const m = world.map;
-    const r = m.town.radius + 320;
+    const town = world.map.towns[0];
+    const r = town.radius + 380;
     camera.position.set(
-      m.town.x + Math.cos(menuAngle) * r,
-      170 + Math.sin(menuAngle * 0.7) * 30,
-      m.town.z + Math.sin(menuAngle) * r
+      town.x + Math.cos(menuAngle) * r,
+      190 + Math.sin(menuAngle * 0.7) * 30,
+      town.z + Math.sin(menuAngle) * r
     );
-    camera.lookAt(m.town.x, 20, m.town.z);
+    camera.lookAt(town.x, 20, town.z);
   }
 
   renderer.render(scene, camera);
 }
+
+// ---------------- boot: build the world behind the loading screen ----------------
+setTimeout(() => {
+  world = new World(scene, loadSavedMap() ?? defaultMap(), renderer);
+  npcs = new NpcManager(world);
+  npcs.build();
+  $("map-name").textContent = world.map.name;
+  populateRoutePicker();
+  $("loading").classList.add("hidden");
+
+  // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride
+  if (location.hash.includes("noui")) $("menu").classList.add("hidden");
+  if (location.hash.includes("autoride")) {
+    virtual = new VirtualTrainer(onTrainerData);
+    virtual.start();
+    telemetry.power = 180;
+    telemetry.cadence = 88;
+    updateStartButton();
+    startRide();
+    const ff = Number(/autoride=(\d+)/.exec(location.hash)?.[1] ?? 0);
+    if (ff > 0 && ride) {
+      for (let i = 0; i < ff * 10; i++) (ride as RideController).update(0.1);
+    }
+    if (location.hash.includes("cam2") && ride) {
+      (ride as RideController).cycleCamera();
+      (ride as RideController).cycleCamera();
+      (ride as RideController).update(0.5);
+    }
+  }
+}, 60);
+
 animate();
