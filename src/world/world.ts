@@ -23,6 +23,8 @@ export class World {
   season: Season = "summer";
   readonly environment: Environment;
   private worldGroup: THREE.Group | null = null;
+  /** boats & buoys that bob on the sea (collected once per rebuild) */
+  private bobbers: { obj: THREE.Object3D; baseY: number; baseRoll: number; phase: number; amp: number; roll: number }[] = [];
 
   constructor(scene: THREE.Scene, map: MapData, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
@@ -57,6 +59,22 @@ export class World {
     group.add(buildScenery(this.map, this.terrain, this.network));
     this.scene.add(group);
     this.worldGroup = group;
+
+    // collect the things that bob on the water for the per-frame animation
+    this.bobbers = [];
+    group.traverse((o) => {
+      const b = o.userData.bob as { phase: number; amp: number; roll: number } | undefined;
+      if (b) {
+        this.bobbers.push({
+          obj: o,
+          baseY: o.position.y,
+          baseRoll: o.rotation.z,
+          phase: b.phase,
+          amp: b.amp,
+          roll: b.roll,
+        });
+      }
+    });
   }
 
   setMap(map: MapData): void {
@@ -66,5 +84,9 @@ export class World {
 
   update(t: number, focus: THREE.Vector3): void {
     this.environment.update(t, focus);
+    for (const b of this.bobbers) {
+      b.obj.position.y = b.baseY + Math.sin(t * 1.1 + b.phase) * b.amp;
+      if (b.roll) b.obj.rotation.z = b.baseRoll + Math.sin(t * 0.9 + b.phase) * b.roll;
+    }
   }
 }

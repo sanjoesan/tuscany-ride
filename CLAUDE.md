@@ -68,6 +68,20 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-11 (7)** - v0.7 "sunflowers, balloons & life on the water" (loop mode):
+- [x] Sunflower fields (spring/summer): rectangular row-patches scattered across wheat/plowed
+      fields, low-poly stalk+leaves+head model (one InstancedMesh, vertex colors), whole field
+      faces the morning sun (east). Capped at 5000 plants; no shadows (perf, like grass tufts).
+      `buildSunflowers` in scenery.ts, avoids roads/river/towns.
+- [x] Hot-air balloons: 3 drifting over the valley (Environment, animated like the birds).
+      Striped teardrop envelope (LatheGeometry, alternating-gore vertex colors), basket + ropes;
+      slow wide-circle drift + thermal bob + gentle yaw sway. `buildBalloons` + update loop.
+- [x] Boats & buoys bob on the swell: harbour boats/buoys tagged `userData.bob`; World collects
+      them once per rebuild and animates Y (+ roll for boats) in World.update. Survives map rebuilds.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass, Chrome boot-render verified (no runtime
+      errors - all three features are on the boot/render path).
+- [ ] Next: ambient audio?, perf pass, boat wakes/foam at shore, more creative ideas
+
 **2026-06-10 (6)** - v0.6 "living Tuscany" (loop mode active - user said keep building autonomously):
 - [x] River: seeded course hills->sea avoiding towns (MapData.river), strictly downhill water
       profile, terrain carves the bed (cuts under roads), lush green banks + pebble bed painted,

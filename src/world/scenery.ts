@@ -232,6 +232,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
   group.add(buildHarbour(map, terrain, rand));
   group.add(buildAnimals(map, terrain, rand, blocked, inTown));
   group.add(buildHayBales(map, terrain, rand, blocked, inTown));
+  group.add(buildSunflowers(map, terrain, rand, blocked, inTown));
   group.add(buildTelegraphPoles(terrain, network, rand));
 
   return group;
@@ -461,6 +462,8 @@ function buildHarbour(map: MapData, terrain: Terrain, rand: () => number): THREE
     boat.rotation.y = rand() * Math.PI * 2;
     boat.rotation.z = (rand() - 0.5) * 0.04;
     boat.traverse((o) => (o.castShadow = true));
+    // gentle bob + roll on the swell (animated by World.update)
+    boat.userData.bob = { phase: rand() * 6.28, amp: 0.1 + rand() * 0.07, roll: 0.03 + rand() * 0.03 };
     group.add(boat);
   }
 
@@ -469,6 +472,7 @@ function buildHarbour(map: MapData, terrain: Terrain, rand: () => number): THREE
   for (let i = 0; i < 8; i++) {
     const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), buoyMat);
     buoy.position.set(map.coastX - 40 - rand() * 320, 0.25, town.z + (rand() - 0.5) * 600);
+    buoy.userData.bob = { phase: rand() * 6.28, amp: 0.12 + rand() * 0.08, roll: 0 };
     group.add(buoy);
   }
   return group;
@@ -612,6 +616,121 @@ function buildHayBales(
     inst.setMatrixAt(i, dummy.matrix);
   });
   inst.castShadow = true;
+  group.add(inst);
+  return group;
+}
+
+// ====================================================================
+// sunflower fields (spring & summer) - the quintessential Tuscan crop
+// ====================================================================
+
+/** One low-poly sunflower: green stalk + two leaves + a sun-facing head. */
+function sunflowerGeo(): THREE.BufferGeometry {
+  const STALK = 0x53702a;
+  const LEAF = 0x3f6322;
+  const PETAL = 0xf4c20a;
+  const CORE = 0x5a3a1c;
+  const parts: THREE.BufferGeometry[] = [];
+
+  const stalk = new THREE.CylinderGeometry(0.03, 0.055, 1.65, 5);
+  stalk.translate(0, 0.82, 0);
+  parts.push(colorGeo(stalk, STALK));
+
+  for (let l = 0; l < 2; l++) {
+    const ang = l === 0 ? 0.7 : -0.8;
+    const leaf = new THREE.SphereGeometry(0.17, 5, 4);
+    leaf.scale(1.8, 0.16, 0.7);
+    leaf.translate(0.24, 0, 0);
+    leaf.rotateY(ang);
+    leaf.translate(0, 0.6 + l * 0.36, 0);
+    parts.push(colorGeo(leaf, LEAF));
+  }
+
+  // head built facing +Z, then tilted up and lifted onto the stalk
+  const head: THREE.BufferGeometry[] = [];
+  const core = new THREE.CylinderGeometry(0.2, 0.2, 0.08, 14);
+  core.rotateX(Math.PI / 2); // disc faces +Z
+  head.push(colorGeo(core, CORE));
+  const petalCount = 14;
+  for (let k = 0; k < petalCount; k++) {
+    const a = (k / petalCount) * Math.PI * 2;
+    const petal = new THREE.BoxGeometry(0.09, 0.22, 0.03);
+    petal.translate(0, 0.27, 0.02);
+    petal.rotateZ(a);
+    head.push(colorGeo(petal, PETAL));
+  }
+  const headGeo = mergeGeometries(head.map((g) => g.toNonIndexed()))!;
+  headGeo.rotateX(-0.35); // tilt the face skyward
+  headGeo.translate(0, 1.6, 0.12);
+  parts.push(headGeo);
+
+  return mergeGeometries(parts.map((g) => g.toNonIndexed()))!;
+}
+
+function buildSunflowers(
+  map: MapData,
+  terrain: Terrain,
+  rand: () => number,
+  blocked: (x: number, z: number, m?: number) => boolean,
+  inTown: (x: number, z: number, e?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "sunflowers";
+  if (terrain.season !== "summer" && terrain.season !== "spring") return group;
+
+  const half = map.size / 2 - 100;
+  const placements: { x: number; z: number; rot: number; s: number }[] = [];
+  const CAP = 5000;
+
+  // scatter rectangular patches of rows across the wheat/plowed fields
+  for (let x = -half; x < half && placements.length < CAP; x += 120) {
+    for (let z = -half; z < half && placements.length < CAP; z += 120) {
+      const cx = x + (rand() - 0.5) * 90;
+      const cz = z + (rand() - 0.5) * 90;
+      if (cx < map.coastX + 170 || inTown(cx, cz, 45)) continue;
+      const fk = terrain.fieldKind(cx, cz);
+      if (fk !== "wheat" && fk !== "plowed") continue;
+      if (rand() > 0.34) continue; // not every eligible field is in bloom
+      const rows = 6 + Math.floor(rand() * 6);
+      const cols = 7 + Math.floor(rand() * 8);
+      const spacing = 1.5;
+      const pang = rand() * Math.PI * 2;
+      const ca = Math.cos(pang);
+      const sa = Math.sin(pang);
+      // whole field faces the morning sun (roughly east), tiny per-patch variance
+      const faceYaw = Math.PI / 2 + (rand() - 0.5) * 0.5;
+      for (let r = 0; r < rows && placements.length < CAP; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lx = (c - cols / 2) * spacing + (rand() - 0.5) * 0.5;
+          const lz = (r - rows / 2) * spacing + (rand() - 0.5) * 0.5;
+          const px = cx + lx * ca - lz * sa;
+          const pz = cz + lx * sa + lz * ca;
+          if (px < map.coastX + 130 || inTown(px, pz, 25) || blocked(px, pz, 8)) continue;
+          if (terrain.fieldKind(px, pz) !== fk) continue; // keep the patch within one field
+          placements.push({ x: px, z: pz, rot: faceYaw + (rand() - 0.5) * 0.3, s: 0.85 + rand() * 0.4 });
+        }
+      }
+    }
+  }
+  if (placements.length === 0) return group;
+
+  const inst = new THREE.InstancedMesh(
+    sunflowerGeo(),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
+    placements.length
+  );
+  inst.name = "sunflowers";
+  const dummy = new THREE.Object3D();
+  placements.forEach((p, i) => {
+    dummy.position.set(p.x, terrain.height(p.x, p.z) - 0.05, p.z);
+    dummy.rotation.set(0, p.rot, 0);
+    dummy.scale.setScalar(p.s);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+  });
+  // tens of thousands of tris - skip shadows like the grass tufts do
+  inst.castShadow = false;
+  inst.receiveShadow = false;
   group.add(inst);
   return group;
 }
@@ -956,6 +1075,7 @@ export class Environment {
 
     this.buildHorizonHills();
     this.buildBirds();
+    this.buildBalloons();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1025,6 +1145,87 @@ export class Environment {
         h: 70 + rand() * 90,
         speed: 0.03 + rand() * 0.025,
         phase: rand() * 6.28,
+      });
+    }
+  }
+
+  // ---------- hot-air balloons drifting over the valley ----------
+  private balloons: { group: THREE.Group; cx: number; cz: number; r: number; h: number; speed: number; phase: number; bob: number }[] = [];
+
+  private buildBalloons(): void {
+    const rand = mulberry32(424242);
+    const PALETTES: [number, number][] = [
+      [0xd23b3b, 0xf4f0e8],
+      [0x2f6fb0, 0xf4c20a],
+      [0x2e7d4f, 0xf4f0e8],
+      [0xe07b1a, 0x8a2b8f],
+      [0xc0392b, 0x2f6fb0],
+    ];
+
+    // teardrop envelope profile (bottom -> top), reused for every balloon
+    const R = 9;
+    const H = 13;
+    const steps = 14;
+    const profile: THREE.Vector2[] = [];
+    for (let s = 0; s <= steps; s++) {
+      const tt = s / steps;
+      const rr = Math.pow(Math.sin(tt * Math.PI * 0.92 + 0.04), 0.6) * R;
+      profile.push(new THREE.Vector2(Math.max(0.02, rr), tt * H));
+    }
+    const gores = 12;
+
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.Group();
+      const [c0, c1] = PALETTES[Math.floor(rand() * PALETTES.length)];
+      const lathe = new THREE.LatheGeometry(profile, gores);
+      // colour alternating gores for the classic striped envelope
+      const pos = lathe.attributes.position;
+      const colors = new Float32Array(pos.count * 3);
+      const cA = new THREE.Color(c0);
+      const cB = new THREE.Color(c1);
+      const perLine = steps + 1;
+      for (let li = 0; li <= gores; li++) {
+        const c = li % 2 === 0 ? cA : cB;
+        for (let si = 0; si < perLine; si++) {
+          const idx = li * perLine + si;
+          colors[idx * 3] = c.r;
+          colors[idx * 3 + 1] = c.g;
+          colors[idx * 3 + 2] = c.b;
+        }
+      }
+      lathe.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      const env = new THREE.Mesh(
+        lathe,
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0, side: THREE.DoubleSide })
+      );
+      g.add(env);
+
+      const basket = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 1.9, 2.2),
+        new THREE.MeshStandardMaterial({ color: 0x6b4a26, roughness: 0.95 })
+      );
+      basket.position.y = -3.4;
+      g.add(basket);
+
+      // suspension ropes from basket corners up to the envelope skirt
+      const rv: number[] = [];
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as [number, number][]) {
+        rv.push(sx * 0.95, -2.4, sz * 0.95, sx * R * 0.42, 0.5, sz * R * 0.42);
+      }
+      const ropeGeo = new THREE.BufferGeometry();
+      ropeGeo.setAttribute("position", new THREE.Float32BufferAttribute(rv, 3));
+      g.add(new THREE.LineSegments(ropeGeo, new THREE.LineBasicMaterial({ color: 0x2a2a2a })));
+
+      this.scene.add(g);
+      this.balloons.push({
+        group: g,
+        cx: (rand() - 0.5) * this.map.size * 0.5,
+        cz: (rand() - 0.5) * this.map.size * 0.5,
+        r: 280 + rand() * 520,
+        h: 150 + rand() * 120,
+        speed: 0.006 + rand() * 0.006,
+        phase: rand() * 6.28,
+        bob: rand() * 6.28,
       });
     }
   }
@@ -1099,6 +1300,16 @@ export class Environment {
       f.group.children.forEach((bird, i) => {
         bird.rotation.x = Math.sin(t * 7 + i * 1.7) * 0.5; // flap
       });
+    }
+    // balloons drift in slow wide circles, bobbing on the thermals
+    for (const b of this.balloons) {
+      const a = t * b.speed + b.phase;
+      b.group.position.set(
+        b.cx + Math.cos(a) * b.r,
+        b.h + Math.sin(t * 0.25 + b.bob) * 4,
+        b.cz + Math.sin(a) * b.r
+      );
+      b.group.rotation.y = Math.sin(t * 0.1 + b.phase) * 0.15;
     }
     if (this.mode === "cycle") {
       const phase = (t / CYCLE_DAY_SECONDS) % 1;
