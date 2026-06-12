@@ -224,6 +224,78 @@ export class River {
     return group;
   }
 
+  /**
+   * A little raft of ducks bobbing on a calm reach. Each duck is tagged
+   * userData.bob, so World's existing bobber animation rocks them - no new
+   * per-frame code needed.
+   */
+  buildDucks(towns: MapData["towns"]): THREE.Group {
+    const group = new THREE.Group();
+    group.name = "ducks";
+    const n = this.samples.length;
+    if (n < 8) return group;
+
+    let s: RiverSample | null = null;
+    for (let i = Math.floor(n * 0.55); i < Math.floor(n * 0.85); i++) {
+      const c = this.samples[i];
+      if (c.y < 0.6) continue;
+      if (towns.some((t) => Math.hypot(c.x - t.x, c.z - t.z) < t.radius + 30)) continue;
+      s = c;
+      break;
+    }
+    if (!s) return group;
+
+    const yaw = Math.atan2(-s.dirZ, s.dirX); // local +X = downstream
+    const nx = -s.dirZ;
+    const nz = s.dirX;
+
+    const makeDuck = (scale: number, body: number, head: number): THREE.Group => {
+      const d = new THREE.Group();
+      const bodyMat = new THREE.MeshStandardMaterial({ color: body, roughness: 0.7 });
+      const hull = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), bodyMat);
+      hull.scale.set(1.5, 0.85, 1.0);
+      hull.position.y = 0.18;
+      d.add(hull);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 6), bodyMat);
+      tail.position.set(-0.52, 0.3, 0);
+      tail.rotation.z = 1.25;
+      d.add(tail);
+      const headMat = new THREE.MeshStandardMaterial({ color: head, roughness: 0.6 });
+      const skull = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), headMat);
+      skull.position.set(0.5, 0.44, 0);
+      d.add(skull);
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.32, 6), headMat);
+      neck.position.set(0.43, 0.27, 0);
+      neck.rotation.z = 0.42;
+      d.add(neck);
+      const beak = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, 0.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0xe8a33a, roughness: 0.6 })
+      );
+      beak.position.set(0.68, 0.42, 0);
+      beak.rotation.z = -Math.PI / 2;
+      d.add(beak);
+      d.scale.setScalar(scale);
+      d.traverse((o) => (o.castShadow = true));
+      return d;
+    };
+
+    const place = (duck: THREE.Group, along: number, across: number): void => {
+      duck.position.set(s!.x + s!.dirX * along + nx * across, s!.y + 0.02, s!.z + s!.dirZ * along + nz * across);
+      duck.rotation.y = yaw;
+      duck.userData.bob = { phase: Math.random() * 6.28, amp: 0.04 + Math.random() * 0.03, roll: 0.05 + Math.random() * 0.04 };
+      group.add(duck);
+    };
+
+    // a mallard drake leading a line of ducklings, plus a couple more on the reach
+    place(makeDuck(1.0, 0x6b4a2a, 0x2e5a36), 0, 0);
+    for (let i = 0; i < 4; i++) place(makeDuck(0.5, 0x8a6a3a, 0x8a6a3a), -1.0 - i * 0.8, i % 2 ? 0.28 : -0.28);
+    place(makeDuck(1.0, 0xe8e4da, 0xe8e4da), 2.6, 1.2);
+    place(makeDuck(1.0, 0x5a4a32, 0x355f3a), 1.6, -1.5);
+
+    return group;
+  }
+
   private bridgeMesh(
     s: { x: number; y: number; z: number; dirX: number; dirZ: number },
     len: number,

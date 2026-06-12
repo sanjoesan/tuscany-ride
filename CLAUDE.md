@@ -68,6 +68,18 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (22)** - v0.7p "ducks on the river" (loop mode, 5-min autonomous loop):
+- [x] Duck family (`River.buildDucks`): a low-poly mallard drake leading 4 ducklings in a line,
+      plus a white duck and another mallard, on a calm mid-course reach above the tidal mouth and
+      clear of towns. Each duck (body/tail/neck/head/beak) is tagged `userData.bob`, so World's
+      existing bobber animation rocks them - zero new per-frame code. Oriented to the flow.
+- [x] Deferred cloud shadows on purpose: the good approach is shader injection into the terrain
+      material (sample a scrolling shadow tex by world XZ so it conforms to hills) - but that can
+      black-screen the terrain if it miscompiles and can't be verified headless. Needs real-GPU
+      verification before shipping in the autonomous loop.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: cloud shadows (with GPU verify), perf pass from user fps, swans, river reeds/dragonflies
+
 **2026-06-12 (21)** - v0.7o "the bells, the bells" (loop mode, 5-min autonomous loop):
 - [x] Bell toll sound (`AmbientAudio.bellToll`): a struck church bell synthesised from inharmonic
       partials (hum/prime/tierce/quint/nominal...) with fast attacks and long, partial-dependent
