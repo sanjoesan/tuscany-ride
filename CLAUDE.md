@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (13)** - v0.7g "moon & shooting stars" (loop mode, 5-min autonomous loop):
+- [x] Moon disc (`Environment.buildMoon`): a Sprite hung in the exact moonlight direction (el 42,
+      az 70 - same vector `applySun` lights the night with), so the visible moon and the shadows
+      agree. Pale halo + bright disc + faint maria (canvas texture); `fog:false`, re-centred on the
+      camera each frame at R=8500 (just in front of the stars). Fades in with `starBase`.
+- [x] Shooting stars (`Environment.buildMeteor`): one reusable additive Line that streaks a tangent
+      path across the upper dome over 0.8 s (sin fade in/out), then waits 8-34 s before the next.
+      Only fires when it's properly dark (`starBase > 0.5`); anchored to the camera so it reads as sky.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, church-bell tolls on the hour, drifting clouds, more creative ideas
+
 **2026-06-12 (12)** - v0.7f "starry night" (loop mode, 5-min autonomous loop):
 - [x] Night starfield (`Environment.buildStars`): 1400-point upper-hemisphere dome (R=9000), soft
       radial star sprite, additive blending, mostly white with a few bluish/warm tints. `fog:false`

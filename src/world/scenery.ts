@@ -1079,6 +1079,8 @@ export class Environment {
     this.buildShoreFoam();
     this.buildSeaBoats();
     this.buildStars();
+    this.buildMoon();
+    this.buildMeteor();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1383,6 +1385,59 @@ export class Environment {
     this.stars = stars;
   }
 
+  // ---------- moon disc, hung in the moonlight direction ----------
+  private moon: THREE.Sprite | null = null;
+  private moonDir = new THREE.Vector3();
+
+  private buildMoon(): void {
+    // same direction the night light comes from (applySun: el 42, az 70)
+    this.moonDir.setFromSphericalCoords(
+      1,
+      Math.PI / 2 - THREE.MathUtils.degToRad(42),
+      THREE.MathUtils.degToRad(70)
+    );
+    const mat = new THREE.SpriteMaterial({
+      map: buildMoonTexture(),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    });
+    const moon = new THREE.Sprite(mat);
+    moon.scale.setScalar(620);
+    moon.frustumCulled = false;
+    this.scene.add(moon);
+    this.moon = moon;
+  }
+
+  // ---------- a single reusable shooting star ----------
+  private meteor: {
+    line: THREE.Line;
+    mat: THREE.LineBasicMaterial;
+    active: boolean;
+    nextAt: number;
+    t0: number;
+    a0: THREE.Vector3;
+    dir: THREE.Vector3;
+  } | null = null;
+
+  private buildMeteor(): void {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      fog: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const line = new THREE.Line(geo, mat);
+    line.frustumCulled = false;
+    this.scene.add(line);
+    this.meteor = { line, mat, active: false, nextAt: 6, t0: 0, a0: new THREE.Vector3(), dir: new THREE.Vector3() };
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1453,6 +1508,45 @@ export class Environment {
       this.stars.visible = this.starBase > 0.01;
       if (this.stars.visible) {
         (this.stars.material as THREE.PointsMaterial).opacity = this.starBase * (0.8 + 0.2 * Math.sin(t * 1.5));
+      }
+    }
+    // moon: hangs in the moonlight direction, fading in with the stars
+    if (this.moon) {
+      this.moon.visible = this.starBase > 0.01;
+      if (this.moon.visible) {
+        this.moon.position.copy(focus).addScaledVector(this.moonDir, 8500);
+        (this.moon.material as THREE.SpriteMaterial).opacity = Math.min(1, this.starBase * 1.3);
+      }
+    }
+    // shooting star: rare streak across the night sky
+    const m = this.meteor;
+    if (m) {
+      if (!m.active && this.starBase > 0.5 && t > m.nextAt) {
+        const yy = 0.45 + Math.random() * 0.5; // start high in the dome
+        const rr = Math.sqrt(1 - yy * yy);
+        const th = Math.random() * Math.PI * 2;
+        m.a0.set(Math.cos(th) * rr, yy, Math.sin(th) * rr);
+        // travel roughly tangent to the dome, drifting downward
+        m.dir.set(Math.cos(Math.random() * Math.PI * 2), -0.15 - Math.random() * 0.2, Math.sin(Math.random() * Math.PI * 2));
+        m.dir.addScaledVector(m.a0, -m.dir.dot(m.a0)).normalize();
+        m.active = true;
+        m.t0 = t;
+      }
+      if (m.active) {
+        const p = (t - m.t0) / 0.8;
+        if (p >= 1) {
+          m.active = false;
+          m.mat.opacity = 0;
+          m.nextAt = t + 8 + Math.random() * 26;
+        } else {
+          const head = focus.clone().addScaledVector(m.a0, 8000).addScaledVector(m.dir, p * 2200);
+          const tail = head.clone().addScaledVector(m.dir, -700);
+          const pos = m.line.geometry.attributes.position as THREE.BufferAttribute;
+          pos.setXYZ(0, head.x, head.y, head.z);
+          pos.setXYZ(1, tail.x, tail.y, tail.z);
+          pos.needsUpdate = true;
+          m.mat.opacity = Math.sin(p * Math.PI) * this.starBase;
+        }
       }
     }
     // birds circle their roosts, wings flapping
@@ -1650,6 +1744,41 @@ function buildStarSprite(): THREE.Texture {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
+  return new THREE.CanvasTexture(canvas);
+}
+
+/** Pale moon: soft halo, bright disc, a few faint maria blotches. */
+function buildMoonTexture(): THREE.Texture {
+  const S = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  // wide soft halo
+  const halo = ctx.createRadialGradient(S / 2, S / 2, S * 0.18, S / 2, S / 2, S / 2);
+  halo.addColorStop(0, "rgba(245,243,230,0.8)");
+  halo.addColorStop(0.5, "rgba(228,232,240,0.12)");
+  halo.addColorStop(1, "rgba(228,232,240,0)");
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, S, S);
+  // bright disc
+  const disc = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S * 0.3);
+  disc.addColorStop(0, "rgba(250,249,240,1)");
+  disc.addColorStop(0.8, "rgba(236,237,228,1)");
+  disc.addColorStop(1, "rgba(236,237,228,0)");
+  ctx.fillStyle = disc;
+  ctx.fillRect(0, 0, S, S);
+  // faint seas
+  const rand = mulberry32(7);
+  ctx.fillStyle = "#9fa6b0";
+  for (let i = 0; i < 5; i++) {
+    ctx.globalAlpha = 0.08 + rand() * 0.07;
+    const a = rand() * Math.PI * 2;
+    const d = rand() * S * 0.16;
+    ctx.beginPath();
+    ctx.arc(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, S * (0.03 + rand() * 0.05), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
   return new THREE.CanvasTexture(canvas);
 }
 
