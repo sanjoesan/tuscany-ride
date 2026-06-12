@@ -1076,6 +1076,7 @@ export class Environment {
     this.buildHorizonHills();
     this.buildBirds();
     this.buildBalloons();
+    this.buildShoreFoam();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1230,6 +1231,32 @@ export class Environment {
     }
   }
 
+  // ---------- surf: lacy foam washing along the shoreline ----------
+  private shoreFoam: THREE.Mesh | null = null;
+  private foamTex: THREE.Texture | null = null;
+
+  private buildShoreFoam(): void {
+    const len = this.map.size * 1.05;
+    const geo = new THREE.PlaneGeometry(40, len);
+    const tex = buildFoamTexture();
+    tex.repeat.set(1, Math.max(8, Math.round(len / 70)));
+    this.foamTex = tex;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.78,
+      fog: true,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(this.map.coastX + 18, 0.08, 0);
+    mesh.renderOrder = 2;
+    mesh.name = "shore-foam";
+    this.scene.add(mesh);
+    this.shoreFoam = mesh;
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1311,6 +1338,13 @@ export class Environment {
       );
       b.group.rotation.y = Math.sin(t * 0.1 + b.phase) * 0.15;
     }
+    // surf washes in and out along the shore, foam streaks drifting north
+    if (this.shoreFoam && this.foamTex) {
+      this.foamTex.offset.y = -t * 0.035;
+      this.shoreFoam.position.x = this.map.coastX + 18 + Math.sin(t * 0.45) * 3.5;
+      const mat = this.shoreFoam.material as THREE.MeshBasicMaterial;
+      mat.opacity = (this.isNight ? 0.3 : 0.78) * (0.7 + 0.3 * Math.sin(t * 0.9 + 1.3));
+    }
     if (this.mode === "cycle") {
       const phase = (t / CYCLE_DAY_SECONDS) % 1;
       const el = Math.sin(phase * Math.PI) * 60 - 4;
@@ -1361,6 +1395,44 @@ function buildWaterNormals(): THREE.Texture {
   ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/**
+ * Lacy foam strip for the shoreline: white pixels whose alpha peaks across the
+ * waterline (U) and breaks into wave streaks along the shore (V). Tiles in V.
+ */
+function buildFoamTexture(): THREE.Texture {
+  const W = 64; // across-shore (U)
+  const H = 256; // along-shore (V)
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(W, H);
+  const n = new Noise2D(2024);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const v = y / (H - 1);
+      // foam hugs the waterline, fading to open sea and dry sand
+      const env = Math.exp(-Math.pow((u - 0.5) / 0.24, 2));
+      // along-shore lace, sampled on a circle so it tiles seamlessly in V
+      const ang = v * Math.PI * 2;
+      const nv =
+        n.noise(Math.cos(ang) * 2.5 + u * 3, Math.sin(ang) * 2.5) * 0.5 +
+        0.5 +
+        n.noise(Math.cos(ang) * 6 + 11, Math.sin(ang) * 6) * 0.25;
+      const a = Math.max(0, Math.min(1, env * (nv - 0.35) * 2.6));
+      const i = (y * W + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
 

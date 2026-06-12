@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (8)** - v0.7b "surf on the shoreline" (loop mode, 5-min autonomous loop):
+- [x] Animated shoreline foam: a lacy white surf band runs the full coast at the waterline
+      (`Environment.buildShoreFoam`). Canvas-generated foam texture - alpha peaks across the
+      waterline (U) and breaks into wave streaks along-shore (V, tiles seamlessly via a circular
+      noise sample). One transparent plane (`depthWrite:false`, `renderOrder:2`) just above the
+      sea (y=0.08). Per-frame in `Environment.update`: texture V-offset scrolls north, the strip
+      washes in/out (`coastX+18 +- sin`), opacity gently pulses and dims at night (0.78 -> 0.3).
+      Lives in Environment (persists across map rebuilds, like the water/birds/balloons).
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: ambient audio?, perf pass, boat wakes behind moving boats, more creative ideas
+
 **2026-06-11 (7)** - v0.7 "sunflowers, balloons & life on the water" (loop mode):
 - [x] Sunflower fields (spring/summer): rectangular row-patches scattered across wheat/plowed
       fields, low-poly stalk+leaves+head model (one InstancedMesh, vertex colors), whole field
