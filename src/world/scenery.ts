@@ -810,6 +810,8 @@ function buildCampanile(map: MapData, terrain: Terrain): THREE.Group {
 const CAFE_TABLE_MAT = new THREE.MeshStandardMaterial({ color: 0xeae4d2, roughness: 0.5, metalness: 0.3 });
 const CAFE_CHAIR_MAT = new THREE.MeshStandardMaterial({ color: 0x37463a, roughness: 0.6, metalness: 0.3 });
 const CAFE_POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x6b5a44, roughness: 0.85 });
+const CAFE_WEAR = [0x2f4a6b, 0x7a2230, 0x3a5a3a, 0xc7b299, 0x8a4a30, 0xe0d6c0, 0xb0492e];
+const CAFE_SKIN = [0xe8c39e, 0xd9a47e, 0xc98e66, 0xa66a44];
 const PARASOL_PAIRS: [string, string][] = [
   ["#c0392b", "#f3ead2"],
   ["#2e6b4f", "#f3ead2"],
@@ -868,6 +870,29 @@ function makeCafe(rand: () => number, stripeIdx: number): THREE.Group {
       const l = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.44, 0.04), CAFE_CHAIR_MAT);
       l.position.set(lx, 0.22, lz);
       chair.add(l);
+    }
+    // a seated patron (chair +z faces the table, so arms reach forward)
+    if (rand() < 0.62) {
+      const wear = new THREE.MeshStandardMaterial({ color: CAFE_WEAR[Math.floor(rand() * CAFE_WEAR.length)], roughness: 0.78 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: CAFE_SKIN[Math.floor(rand() * CAFE_SKIN.length)], roughness: 0.7 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.24), wear);
+      torso.position.set(0, 0.72, 0.04);
+      torso.rotation.x = -0.1;
+      chair.add(torso);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), skinMat);
+      head.position.set(0, 1.06, 0.06);
+      chair.add(head);
+      for (const sd of [0.16, -0.16]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.42), wear);
+        arm.position.set(sd, 0.8, 0.26);
+        arm.rotation.x = 0.5;
+        chair.add(arm);
+      }
+      for (const sd of [0.09, -0.09]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), CAFE_CHAIR_MAT);
+        leg.position.set(sd, 0.22, 0.16);
+        chair.add(leg);
+      }
     }
     chair.position.set(cx, 0, cz);
     chair.rotation.y = Math.atan2(-cx, -cz);

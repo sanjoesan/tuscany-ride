@@ -68,6 +68,14 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (34)** - v0.8i "cafe patrons" (finishes the piazza cafes):
+- [x] Seated patrons at the cafe chairs (~62% chance per chair, in `makeCafe`): low-poly figure
+      (leaning torso, head, two arms reaching to the table, two legs) parented to the chair group, so
+      they inherit its position + table-facing rotation (chair local +z faces the table). Period
+      `CAFE_WEAR`/`CAFE_SKIN` palettes.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: villa at the avenue's end; Piaggio Ape; gentle idle (sip/turn) for patrons
+
 **2026-06-12 (33)** - v0.8h "piazza cafe terraces" (Dolce Vita life in the towns):
 - [x] Cafe terraces (`buildCafes`/`makeCafe` in scenery.ts): 2-3 per town in the open piazza ring
       (radius 0.16-0.38, off the fountain, off the road via `blocked`). Each = round bistro table
