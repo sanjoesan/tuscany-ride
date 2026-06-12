@@ -29,6 +29,8 @@ export class World {
   private beacons: { pivot: THREE.Object3D; speed: number }[] = [];
   /** things that simply spin about an axis, e.g. windmill sails (per rebuild) */
   private spinners: { obj: THREE.Object3D; axis: "x" | "y" | "z"; speed: number }[] = [];
+  /** things that swing like a pendulum, e.g. a bell (per rebuild) */
+  private swingers: { obj: THREE.Object3D; axis: "x" | "y" | "z"; amp: number; speed: number; phase: number }[] = [];
 
   constructor(scene: THREE.Scene, map: MapData, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
@@ -69,6 +71,7 @@ export class World {
     this.bobbers = [];
     this.beacons = [];
     this.spinners = [];
+    this.swingers = [];
     group.traverse((o) => {
       const b = o.userData.bob as { phase: number; amp: number; roll: number } | undefined;
       if (b) {
@@ -85,6 +88,8 @@ export class World {
       if (beacon) this.beacons.push({ pivot: o, speed: beacon.speed });
       const spin = o.userData.spin as { axis: "x" | "y" | "z"; speed: number } | undefined;
       if (spin) this.spinners.push({ obj: o, axis: spin.axis, speed: spin.speed });
+      const swing = o.userData.swing as { axis: "x" | "y" | "z"; amp: number; speed: number; phase: number } | undefined;
+      if (swing) this.swingers.push({ obj: o, axis: swing.axis, amp: swing.amp, speed: swing.speed, phase: swing.phase });
     });
   }
 
@@ -115,6 +120,10 @@ export class World {
     // windmill sails and other simple spinners
     for (const s of this.spinners) {
       s.obj.rotation[s.axis] = t * s.speed;
+    }
+    // pendulum swingers, e.g. the campanile bell
+    for (const s of this.swingers) {
+      s.obj.rotation[s.axis] = s.amp * Math.sin(t * s.speed + s.phase);
     }
   }
 }

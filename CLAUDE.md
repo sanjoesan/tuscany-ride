@@ -68,6 +68,16 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (20)** - v0.7n "the campanile" (loop mode, 5-min autonomous loop):
+- [x] Bell tower (`buildCampanile` in scenery.ts): a square stone shaft + belfry stage with four
+      dark arched openings + pyramidal cap + a small clock face, placed just off the piazza of the
+      biggest town (`towns.reduce` by radius). Stands on `terrain.height`.
+- [x] Swinging bell: a bronze bell hung in the belfry on a pivot tagged `userData.swing =
+      {axis,amp,speed,phase}`. New pendulum primitive in World - collected per rebuild beside the
+      spinners and rocked each frame (`rotation[axis] = amp*sin(t*speed+phase)`) in `World.update`.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: bell TOLL sound synced to the swing (AmbientAudio), cloud shadows, perf pass from fps
+
 **2026-06-12 (19)** - v0.7m "watermill on the river" (loop mode, 5-min autonomous loop):
 - [x] Watermill (`River.buildWatermill`, beside buildBridges): stone mill house on the bank + a
       paddle wheel (hub, rim torus, 8 spokes + 8 floats) that dips ~1 m into the water and turns.

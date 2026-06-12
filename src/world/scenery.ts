@@ -232,6 +232,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
   group.add(buildHarbour(map, terrain, rand));
   group.add(buildLighthouse(map, terrain));
   group.add(buildWindmill(map, terrain, blocked, inTown));
+  group.add(buildCampanile(map, terrain));
   group.add(buildAnimals(map, terrain, rand, blocked, inTown));
   group.add(buildHayBales(map, terrain, rand, blocked, inTown));
   group.add(buildSunflowers(map, terrain, rand, blocked, inTown));
@@ -568,6 +569,82 @@ function buildLighthouse(map: MapData, terrain: Terrain): THREE.Group {
     beam.rotation.y = s * Math.PI;
     pivot.add(beam);
   }
+  group.add(pivot);
+
+  return group;
+}
+
+// ====================================================================
+// campanile: a stone bell tower at the main town, with a swinging bell
+// (the bell pivot is tagged userData.swing; World.update rocks it)
+// ====================================================================
+
+function buildCampanile(map: MapData, terrain: Terrain): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "campanile";
+  if (!map.towns.length) return group;
+  // the biggest town gets the tower; set it just off the piazza centre
+  const town = map.towns.reduce((a, b) => (b.radius > a.radius ? b : a));
+  const tx = town.x + 16;
+  const tz = town.z + 10;
+  const baseY = terrain.height(tx, tz);
+
+  const stone = new THREE.MeshStandardMaterial({ color: 0xcabfa6, roughness: 0.9 });
+  const shaftH = 24;
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(4.6, shaftH, 4.6), stone);
+  shaft.position.set(tx, baseY + shaftH / 2, tz);
+  shaft.castShadow = shaft.receiveShadow = true;
+  group.add(shaft);
+
+  // belfry: a slightly wider stage with dark arched openings on each face
+  const belfryY = baseY + shaftH + 2;
+  const belfry = new THREE.Mesh(new THREE.BoxGeometry(5.2, 4, 5.2), stone);
+  belfry.position.set(tx, belfryY, tz);
+  belfry.castShadow = true;
+  group.add(belfry);
+  const dark = new THREE.MeshStandardMaterial({ color: 0x241f1b, roughness: 0.7 });
+  for (let f = 0; f < 4; f++) {
+    const a = (f / 4) * Math.PI * 2;
+    const opening = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.6, 0.4), dark);
+    opening.position.set(tx + Math.cos(a) * 2.55, belfryY + 0.2, tz + Math.sin(a) * 2.55);
+    opening.rotation.y = a;
+    group.add(opening);
+  }
+
+  // pyramidal cap + a small clock face
+  const cap = new THREE.Mesh(
+    new THREE.ConeGeometry(4.0, 3.6, 4),
+    new THREE.MeshStandardMaterial({ color: 0x7a3b2a, roughness: 0.85 })
+  );
+  cap.position.set(tx, belfryY + 3.8, tz);
+  cap.rotation.y = Math.PI / 4;
+  cap.castShadow = true;
+  group.add(cap);
+
+  const clock = new THREE.Mesh(
+    new THREE.CircleGeometry(1.1, 20),
+    new THREE.MeshStandardMaterial({ color: 0xf2ead2, roughness: 0.8 })
+  );
+  clock.position.set(tx, baseY + shaftH - 3, tz + 2.34);
+  group.add(clock);
+  for (let h = 0; h < 2; h++) {
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.12, h === 0 ? 0.8 : 0.55, 0.05), dark);
+    hand.position.set(tx, baseY + shaftH - 3, tz + 2.36);
+    hand.rotation.z = h === 0 ? 0.6 : -1.9;
+    group.add(hand);
+  }
+
+  // the bell, hung in the belfry on a pivot that rocks (userData.swing)
+  const pivot = new THREE.Group();
+  pivot.position.set(tx, belfryY + 1.6, tz);
+  pivot.userData.swing = { axis: "x", amp: 0.32, speed: 1.7, phase: 0 };
+  const bellMat = new THREE.MeshStandardMaterial({ color: 0x6e5a22, roughness: 0.45, metalness: 0.7 });
+  const bell = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.5, 14), bellMat);
+  bell.position.y = -1.6;
+  pivot.add(bell);
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), bellMat);
+  crown.position.y = -0.85;
+  pivot.add(crown);
   group.add(pivot);
 
   return group;
