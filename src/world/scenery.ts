@@ -1541,13 +1541,16 @@ export class Environment {
 
   // ---------- drifting cumulus clouds (daytime) ----------
   private clouds: { sprite: THREE.Sprite; x0: number; speed: number }[] = [];
+  private cloudMat: THREE.SpriteMaterial | null = null;
 
   private buildClouds(): void {
     const rand = mulberry32(5150);
     const tex = buildCloudTexture();
     const span = this.map.size;
+    // one shared material for every cloud - they all carry the same opacity
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
+    this.cloudMat = mat;
     for (let i = 0; i < 16; i++) {
-      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
       const s = new THREE.Sprite(mat);
       const w = 420 + rand() * 560;
       s.scale.set(w, w * 0.55, 1);
@@ -1731,11 +1734,9 @@ export class Environment {
     // clouds drift slowly east, wrapping across the map; thin out at night
     if (this.clouds.length) {
       const span2 = this.map.size * 2;
-      const cloudOpacity = 0.9 * (1 - 0.7 * this.starBase);
+      if (this.cloudMat) this.cloudMat.opacity = 0.9 * (1 - 0.7 * this.starBase);
       for (const c of this.clouds) {
-        const x = (((c.x0 + t * c.speed + this.map.size) % span2) + span2) % span2 - this.map.size;
-        c.sprite.position.x = x;
-        (c.sprite.material as THREE.SpriteMaterial).opacity = cloudOpacity;
+        c.sprite.position.x = (((c.x0 + t * c.speed + this.map.size) % span2) + span2) % span2 - this.map.size;
       }
     }
     // fireflies: drift and blink, fading in with the night

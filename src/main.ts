@@ -18,6 +18,17 @@ const ambient = new AmbientAudio();
 let audioHintShown = false;
 let audioSceneAccum = 0;
 
+// optional perf overlay (toggle with P, or #stats) - lets the user profile on real hardware
+const perfEl = document.createElement("div");
+perfEl.id = "perf";
+perfEl.style.cssText =
+  "position:fixed;top:8px;left:8px;z-index:50;font:12px/1.45 monospace;color:#9effa0;" +
+  "background:rgba(0,0,0,0.55);padding:6px 9px;border-radius:6px;white-space:pre;pointer-events:none;display:none";
+document.body.appendChild(perfEl);
+let perfOn = false;
+let perfAccum = 0;
+let perfFrames = 0;
+
 // ---------------- renderer / scene ----------------
 const canvas = $("scene") as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -308,6 +319,11 @@ window.addEventListener("keydown", (e) => {
     toast(ambient.toggleMute() ? "♪ Sound muted" : "♪ Sound on");
     return;
   }
+  if (e.key === "p" || e.key === "P") {
+    perfOn = !perfOn;
+    perfEl.style.display = perfOn ? "block" : "none";
+    return;
+  }
   if (mode !== "riding" || !ride) return;
   if (e.key === "c" || e.key === "C") ride.cycleCamera();
   else if (e.key === "ArrowLeft") {
@@ -418,6 +434,22 @@ function animate(): void {
   }
 
   renderer.render(scene, camera);
+
+  if (perfOn) {
+    perfFrames++;
+    perfAccum += dt;
+    if (perfAccum >= 0.5) {
+      const fps = perfFrames / perfAccum;
+      const r = renderer.info.render;
+      const mem = renderer.info.memory;
+      perfEl.textContent =
+        `${fps.toFixed(0)} fps   ${((perfAccum / perfFrames) * 1000).toFixed(1)} ms\n` +
+        `${r.calls} draws   ${(r.triangles / 1000).toFixed(0)}k tris\n` +
+        `geo ${mem.geometries}   tex ${mem.textures}`;
+      perfAccum = 0;
+      perfFrames = 0;
+    }
+  }
 }
 
 // ---------------- boot: build the world behind the loading screen ----------------
@@ -439,6 +471,10 @@ setTimeout(() => {
   // dev helpers for automated screenshots: #noui hides the menu, #autoride starts a demo ride,
   // #route=N / #time=night / #season=autumn force a specific setup
   if (location.hash.includes("noui")) $("menu").classList.add("hidden");
+  if (location.hash.includes("stats")) {
+    perfOn = true;
+    perfEl.style.display = "block";
+  }
   const lookM = /lookat=(-?\d+),(-?\d+)/.exec(location.hash);
   if (lookM) devLookAt = { x: Number(lookM[1]), z: Number(lookM[2]) };
   const routeM = /route=(-?\d+)/.exec(location.hash);

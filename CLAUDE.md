@@ -68,6 +68,18 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (17)** - v0.7k "perf overlay + cloud material share" (loop mode, 5-min autonomous loop):
+- [x] Perf overlay (toggle `P`, or boot with `#stats`): a small top-left monospace HUD built in
+      `main.ts` showing fps, frame ms, draw calls, k-triangles and live geometry/texture counts
+      (from `renderer.info`, read right after `renderer.render`). Lets the USER profile on real
+      hardware and report back numbers (headless swiftshader fps isn't representative). The geo/tex
+      counts also surface any leak across season/time/editor rebuilds.
+- [x] Small optimisation: all 16 clouds now share ONE `SpriteMaterial` (was 16); opacity is set once
+      per frame instead of per-sprite.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Headless Chrome screenshot capture is
+      flaky in this env - overlay is plain DOM + `renderer.info`, tsc-validated.)
+- [ ] Next: use the user's reported fps to target a real perf pass; cloud shadows; church bells
+
 **2026-06-12 (16)** - v0.7j "fireflies" (loop mode, 5-min autonomous loop):
 - [x] Fireflies at dusk (`Environment.buildFireflies`): 240 additive warm-green glow points in 6
       swarms over the flat coastal plain (fixed low y, so no terrain coupling needed). Each drifts on
