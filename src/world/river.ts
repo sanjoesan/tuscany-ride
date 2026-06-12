@@ -146,6 +146,84 @@ export class River {
     return group;
   }
 
+  /**
+   * A stone mill house on the bank with a paddle wheel that dips into the
+   * water and turns. The wheel pivot is tagged userData.spin so World.update
+   * rotates it (axle = local X, oriented along the bank normal).
+   */
+  buildWatermill(terrain: Terrain, towns: MapData["towns"]): THREE.Group {
+    const group = new THREE.Group();
+    group.name = "watermill";
+    const n = this.samples.length;
+    if (n < 8) return group;
+
+    // a mid-course sample, above the tidal mouth and clear of any town
+    let s: RiverSample | null = null;
+    for (let i = Math.floor(n * 0.4); i < Math.floor(n * 0.75); i++) {
+      const c = this.samples[i];
+      if (c.y < 1.0) continue;
+      if (towns.some((t) => Math.hypot(c.x - t.x, c.z - t.z) < t.radius + 40)) continue;
+      s = c;
+      break;
+    }
+    if (!s) return group;
+
+    const yaw = Math.atan2(-s.dirZ, s.dirX);
+    const nx = -s.dirZ;
+    const nz = s.dirX; // bank normal
+    const bankX = s.x + nx * (s.half + 2.8);
+    const bankZ = s.z + nz * (s.half + 2.8);
+    const groundY = terrain.height(bankX, bankZ);
+
+    // mill house
+    const stone = new THREE.MeshStandardMaterial({ color: 0xb9ad94, roughness: 0.9 });
+    const house = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), stone);
+    house.position.set(bankX, groundY + 3, bankZ);
+    house.rotation.y = yaw;
+    house.castShadow = house.receiveShadow = true;
+    group.add(house);
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(5.4, 3, 4),
+      new THREE.MeshStandardMaterial({ color: 0x8a4a30, roughness: 0.85 })
+    );
+    roof.position.set(bankX, groundY + 7.4, bankZ);
+    roof.rotation.y = yaw + Math.PI / 4;
+    roof.castShadow = true;
+    group.add(roof);
+
+    // paddle wheel at the waterline, axle along the bank normal
+    const R = 3.4;
+    const wheelX = s.x + nx * (s.half - 0.4);
+    const wheelZ = s.z + nz * (s.half - 0.4);
+    const pivot = new THREE.Group();
+    pivot.position.set(wheelX, s.y + R - 1.0, wheelZ); // bottom ~1 m under the surface
+    pivot.rotation.y = Math.atan2(-nz, nx); // local X = axle along the normal
+    pivot.userData.spin = { axis: "x", speed: 0.7 };
+
+    const wood = new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.85 });
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.4, 10), wood);
+    hub.rotation.z = Math.PI / 2;
+    pivot.add(hub);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.18, 6, 24), wood);
+    rim.rotation.y = Math.PI / 2; // ring into the Y-Z plane (axle = X)
+    pivot.add(rim);
+    const paddleMat = new THREE.MeshStandardMaterial({ color: 0x6b573a, roughness: 0.85, side: THREE.DoubleSide });
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.5, R, 0.12), wood);
+      spoke.position.set(0, (Math.cos(a) * R) / 2, (Math.sin(a) * R) / 2);
+      spoke.rotation.x = a;
+      pivot.add(spoke);
+      const paddle = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.1, 0.12), paddleMat);
+      paddle.position.set(0, Math.cos(a) * R, Math.sin(a) * R);
+      paddle.rotation.x = a;
+      pivot.add(paddle);
+    }
+    group.add(pivot);
+
+    return group;
+  }
+
   private bridgeMesh(
     s: { x: number; y: number; z: number; dirX: number; dirZ: number },
     len: number,

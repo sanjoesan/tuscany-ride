@@ -68,6 +68,16 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (19)** - v0.7m "watermill on the river" (loop mode, 5-min autonomous loop):
+- [x] Watermill (`River.buildWatermill`, beside buildBridges): stone mill house on the bank + a
+      paddle wheel (hub, rim torus, 8 spokes + 8 floats) that dips ~1 m into the water and turns.
+      Placed at a mid-course river sample above the tidal mouth and clear of towns; house/roof/wheel
+      all oriented to the flow (yaw from `dirX/dirZ`, axle along the bank normal).
+- [x] Reuses the spinner system from v0.7l: wheel pivot tagged `userData.spin = {axis:"x", speed}`,
+      rotated each frame by `World.update`. Wired into `world.rebuild` after the bridges.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass (incl. river checks).
+- [ ] Next: real perf pass from user fps, cloud shadows, church bells, watermill sluice/foam
+
 **2026-06-12 (18)** - v0.7l "the windmill" (loop mode, 5-min autonomous loop):
 - [x] Inland windmill (`buildWindmill` in scenery.ts): a stone tower (taper + timber cap + windows)
       placed on the highest of 40 seeded inland candidates that clear roads/towns/river (`blocked`/

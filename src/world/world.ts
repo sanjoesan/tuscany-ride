@@ -60,6 +60,7 @@ export class World {
     const riverMesh = this.river.buildMesh();
     if (riverMesh) group.add(riverMesh);
     group.add(this.river.buildBridges(this.network));
+    group.add(this.river.buildWatermill(this.terrain, this.map.towns));
     group.add(buildScenery(this.map, this.terrain, this.network));
     this.scene.add(group);
     this.worldGroup = group;
