@@ -68,6 +68,18 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (30)** - v0.8e "Vespas + much yellower terrain" (loop + user feedback):
+- [x] USER FEEDBACK "Terrain sollte noch viel mehr gelb sein": pushed the golden tint hard -
+      `GOLDEN_TINT` now 0.93/0.80/0.30 and `GOLDEN_STRENGTH` 0.24 (was 0.10); summer palette bumped
+      bright yellow-gold (wheat 0.92/0.79/0.26, pasture 0.84/0.71/0.28, golden plow/scrub/verge).
+      Olives/vines kept green for contrast. Easy single knobs (GOLDEN_TINT/STRENGTH) to dial further.
+- [x] Vespa scooters (`buildVespa` in npc.ts): floorboard, leg-shield, rounded cowl, seat, handlebar
+      + headlight, two single-track wheels, and a seated helmeted rider leaning to the bars (period
+      wear/skin palettes). Same `{object, wheels}` contract; traffic mix now ~20% trucks, rest
+      ~48% bubble cars / ~26% Vespas / ~26% saloons.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: confirm yellow strength with user (dial GOLDEN_STRENGTH); self-host fonts; period vans
+
 **2026-06-12 (29)** - v0.8d "bubble cars" (period traffic for the 60s theme):
 - [x] `buildBubbleCar` in npc.ts: a rounded 1960s bubble car (Fiat 500/600 era) - short body with
       domed nose/tail, glass band + body-colour roof dome, round chrome-ringed headlamps, chrome

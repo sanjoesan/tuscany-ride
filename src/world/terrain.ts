@@ -53,14 +53,14 @@ export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
     verge: [0.34, 0.5, 0.18],
   },
   summer: {
-    wheat: [0.88, 0.71, 0.31], // ripe Tuscan gold
-    pasture: [0.72, 0.59, 0.3], // sun-dried golden pasture
-    vine: [0.35, 0.45, 0.18], // vines stay green for contrast
-    vineEarth: [0.62, 0.45, 0.27], // warm sienna earth
-    plow: [0.62, 0.42, 0.24], // terracotta tilth
-    olive: [0.56, 0.52, 0.3], // warm sage
-    scrub: [0.54, 0.47, 0.27], // dry golden scrub
-    verge: [0.46, 0.49, 0.22],
+    wheat: [0.92, 0.79, 0.26], // bright ripe Tuscan yellow-gold
+    pasture: [0.84, 0.71, 0.28], // sun-bleached golden pasture
+    vine: [0.36, 0.46, 0.18], // vines stay green for contrast
+    vineEarth: [0.68, 0.51, 0.25], // golden sienna earth
+    plow: [0.72, 0.54, 0.24], // golden tilth
+    olive: [0.6, 0.56, 0.29], // warm sage
+    scrub: [0.68, 0.59, 0.26], // dry golden scrub
+    verge: [0.6, 0.59, 0.24], // dry straw verge
   },
   autumn: {
     wheat: [0.68, 0.52, 0.28], // golden stubble
@@ -84,8 +84,10 @@ export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
   },
 };
 
-/** Sun-baked Tuscan gold the whole farmland is nudged toward, for cohesion. */
-const GOLDEN_TINT = new THREE.Color(0.88, 0.71, 0.34);
+/** Sun-baked Tuscan yellow-gold the whole farmland is pulled toward. */
+const GOLDEN_TINT = new THREE.Color(0.93, 0.8, 0.3);
+/** how strongly every field is pulled toward the gold (0..1) */
+const GOLDEN_STRENGTH = 0.24;
 
 export class Terrain {
   readonly map: MapData;
@@ -364,8 +366,8 @@ export class Terrain {
       out.setRGB(pal.olive[0] + v, pal.olive[1] + v, pal.olive[2] + v); // olive grove ground
     }
 
-    // warm the whole farmland a touch toward sun-baked gold, for cohesion
-    out.lerp(GOLDEN_TINT, 0.1);
+    // pull the whole farmland strongly toward sun-baked Tuscan yellow-gold
+    out.lerp(GOLDEN_TINT, GOLDEN_STRENGTH);
 
     // towns get warm stone paving; the piazza a pale circular cobble pattern
     for (const town of m.towns) {

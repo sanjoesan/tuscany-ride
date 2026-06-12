@@ -88,9 +88,16 @@ export class NpcManager {
     if (paths.length > 0) {
       const vehicleCount = Math.min(14, Math.max(6, Math.round(this.world.network.totalKm / 3.5)));
       for (let i = 0; i < vehicleCount; i++) {
-        const isTruck = rand() < 0.22;
-        // most cars are little 1960s bubble cars; some are the bigger saloon
-        const built = isTruck ? buildTruck(rand) : rand() < 0.62 ? buildBubbleCar(rand) : buildCar(rand);
+        const isTruck = rand() < 0.2;
+        // mostly little 1960s bubble cars, some Vespas, a few bigger saloons
+        const r2 = rand();
+        const built = isTruck
+          ? buildTruck(rand)
+          : r2 < 0.48
+            ? buildBubbleCar(rand)
+            : r2 < 0.74
+              ? buildVespa(rand)
+              : buildCar(rand);
         const { object, wheels } = built;
         const pathIdx = Math.floor(rand() * paths.length);
         this.group.add(object);
@@ -408,6 +415,88 @@ function buildBubbleCar(rand: () => number): { object: THREE.Group; wheels: THRE
     g.add(w);
     wheels.push(w);
   }
+  g.traverse((o) => (o.castShadow = true));
+  return { object: g, wheels };
+}
+
+const VESPA_COLORS = [0xa8c4c0, 0xe7ddc4, 0xc0392b, 0x6b8cae, 0xd0d0c8, 0x7d9b6a, 0xd99a2b];
+const VESPA_WEAR = [0x2f4a6b, 0x7a2230, 0x3a5a3a, 0x4a4a52, 0xc7b299, 0x8a4a30];
+
+/** A Vespa-style scooter with a seated rider (drives the network like a car). */
+function buildVespa(rand: () => number): { object: THREE.Group; wheels: THREE.Mesh[] } {
+  const g = new THREE.Group();
+  const color = VESPA_COLORS[Math.floor(rand() * VESPA_COLORS.length)];
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.45 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 0.8 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcccfd3, roughness: 0.3, metalness: 0.9 });
+
+  // floorboard, front leg-shield, rounded rear cowl, seat
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.12, 0.5), bodyMat);
+  board.position.set(0.05, 0.46, 0);
+  g.add(board);
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.95, 0.58), bodyMat);
+  shield.position.set(0.62, 0.82, 0);
+  shield.rotation.z = 0.18;
+  g.add(shield);
+  const cowl = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), bodyMat);
+  cowl.scale.set(1.7, 1.15, 1.2);
+  cowl.position.set(-0.5, 0.72, 0);
+  g.add(cowl);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.14, 0.34), darkMat);
+  seat.position.set(-0.25, 1.04, 0);
+  g.add(seat);
+
+  // handlebar, headlight, front fork
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8), chromeMat);
+  bar.rotateX(Math.PI / 2);
+  bar.position.set(0.74, 1.18, 0);
+  g.add(bar);
+  const lamp = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.13, 0.13, 0.1, 12),
+    new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0x887744, roughness: 0.3 })
+  );
+  lamp.rotateZ(Math.PI / 2);
+  lamp.position.set(0.84, 1.0, 0);
+  g.add(lamp);
+  const fork = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, 0.1), darkMat);
+  fork.position.set(0.78, 0.62, 0);
+  g.add(fork);
+
+  // two wheels on a single track
+  const wheels: THREE.Mesh[] = [];
+  const wheelGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.18, 12);
+  wheelGeo.rotateX(Math.PI / 2);
+  for (const x of [0.78, -0.66]) {
+    const w = new THREE.Mesh(wheelGeo, darkMat);
+    w.position.set(x, 0.24, 0);
+    g.add(w);
+    wheels.push(w);
+  }
+
+  // seated rider, leaning to the bars
+  const wear = new THREE.MeshStandardMaterial({ color: VESPA_WEAR[Math.floor(rand() * VESPA_WEAR.length)], roughness: 0.75 });
+  const skin = new THREE.MeshStandardMaterial({ color: SKIN_TONES[Math.floor(rand() * SKIN_TONES.length)], roughness: 0.7 });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.4), wear);
+  torso.position.set(-0.16, 1.45, 0);
+  torso.rotation.z = -0.28;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), skin);
+  head.position.set(0.06, 1.82, 0);
+  g.add(head);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), bodyMat);
+  helmet.position.set(0.06, 1.85, 0);
+  g.add(helmet);
+  for (const side of [0.18, -0.18]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.11, 0.11), wear);
+    arm.position.set(0.34, 1.46, side);
+    arm.rotation.z = 0.55;
+    g.add(arm);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.13, 0.14), darkMat);
+    leg.position.set(0.2, 1.04, side);
+    leg.rotation.z = 1.0;
+    g.add(leg);
+  }
+
   g.traverse((o) => (o.castShadow = true));
   return { object: g, wheels };
 }
