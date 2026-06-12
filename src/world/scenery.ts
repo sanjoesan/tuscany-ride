@@ -1181,6 +1181,7 @@ export class Environment {
     this.buildMoon();
     this.buildMeteor();
     this.buildClouds();
+    this.buildFireflies();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1558,6 +1559,64 @@ export class Environment {
     }
   }
 
+  // ---------- fireflies drifting over the coastal fields at dusk ----------
+  private fireflies: THREE.Points | null = null;
+  private fireflyBase: Float32Array | null = null;
+  private fireflyParams: { ax: number; ay: number; az: number; fx: number; fy: number; fz: number; br: number; bp: number }[] = [];
+
+  private buildFireflies(): void {
+    const rand = mulberry32(8088);
+    const N = 240;
+    const clusters = 6;
+    const per = Math.ceil(N / clusters);
+    const base = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    let i = 0;
+    for (let c = 0; c < clusters && i < N; c++) {
+      // scatter swarms over the flat coastal plain (terrain is level here)
+      const cx = this.map.coastX + 180 + rand() * 380;
+      const cz = (rand() * 2 - 1) * this.map.size * 0.45;
+      for (let k = 0; k < per && i < N; k++, i++) {
+        base[i * 3] = cx + (rand() * 2 - 1) * 26;
+        base[i * 3 + 1] = 1.0 + rand() * 2.4;
+        base[i * 3 + 2] = cz + (rand() * 2 - 1) * 26;
+        col[i * 3] = 0.7;
+        col[i * 3 + 1] = 1.0;
+        col[i * 3 + 2] = 0.35;
+        this.fireflyParams.push({
+          ax: 2 + rand() * 4,
+          ay: 0.4 + rand() * 1.0,
+          az: 2 + rand() * 4,
+          fx: 0.3 + rand() * 0.5,
+          fy: 0.6 + rand() * 0.8,
+          fz: 0.3 + rand() * 0.5,
+          br: 1.5 + rand() * 2.5,
+          bp: rand() * 6.28,
+        });
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(base.slice(), 3)); // live, animated
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    this.fireflyBase = base; // pristine origins
+    const mat = new THREE.PointsMaterial({
+      size: 5,
+      sizeAttenuation: true,
+      map: buildStarSprite(),
+      vertexColors: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: true,
+      blending: THREE.AdditiveBlending,
+    });
+    const pts = new THREE.Points(geo, mat);
+    pts.name = "fireflies";
+    pts.frustumCulled = false;
+    this.scene.add(pts);
+    this.fireflies = pts;
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1677,6 +1736,31 @@ export class Environment {
         const x = (((c.x0 + t * c.speed + this.map.size) % span2) + span2) % span2 - this.map.size;
         c.sprite.position.x = x;
         (c.sprite.material as THREE.SpriteMaterial).opacity = cloudOpacity;
+      }
+    }
+    // fireflies: drift and blink, fading in with the night
+    if (this.fireflies && this.fireflyBase) {
+      const fade = this.starBase;
+      this.fireflies.visible = fade > 0.05;
+      if (this.fireflies.visible) {
+        (this.fireflies.material as THREE.PointsMaterial).opacity = Math.min(1, fade);
+        const posAttr = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
+        const colAttr = this.fireflies.geometry.attributes.color as THREE.BufferAttribute;
+        const base = this.fireflyBase;
+        const params = this.fireflyParams;
+        for (let i = 0; i < params.length; i++) {
+          const p = params[i];
+          posAttr.setXYZ(
+            i,
+            base[i * 3] + Math.sin(t * p.fx + p.bp) * p.ax,
+            base[i * 3 + 1] + Math.sin(t * p.fy + p.bp * 1.7) * p.ay,
+            base[i * 3 + 2] + Math.cos(t * p.fz + p.bp) * p.az
+          );
+          const blink = 0.15 + 0.85 * Math.max(0, Math.sin(t * p.br + p.bp));
+          colAttr.setXYZ(i, 0.7 * blink, 1.0 * blink, 0.35 * blink);
+        }
+        posAttr.needsUpdate = true;
+        colAttr.needsUpdate = true;
       }
     }
     // birds circle their roosts, wings flapping

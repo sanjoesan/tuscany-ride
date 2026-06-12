@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (16)** - v0.7j "fireflies" (loop mode, 5-min autonomous loop):
+- [x] Fireflies at dusk (`Environment.buildFireflies`): 240 additive warm-green glow points in 6
+      swarms over the flat coastal plain (fixed low y, so no terrain coupling needed). Each drifts on
+      its own slow Lissajous and blinks on its own phase; `update` rewrites the position + color
+      buffers each frame and fades the whole cloud in with `starBase` (hidden by day). Soft round
+      star sprite, `fog:true` so far swarms melt into the haze.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, cloud shadows, church-bell tolls, seasonal gating for fireflies
+
 **2026-06-12 (15)** - v0.7i "the lighthouse" (loop mode, 5-min autonomous loop):
 - [x] Harbour lighthouse (`buildLighthouse` in scenery.ts): a red-banded white tower on a rocky
       outcrop at the shore by `towns[0]` (coastX+18, 150 m north of the pier), tapered cylinder +
