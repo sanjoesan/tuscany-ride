@@ -229,6 +229,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
 
   // ---------- life & infrastructure ----------
   group.add(buildSigns(map, terrain, network));
+  group.add(buildBillboards(map, terrain, network, rand, blocked, inTown));
   group.add(buildHarbour(map, terrain, rand));
   group.add(buildLighthouse(map, terrain));
   group.add(buildWindmill(map, terrain, blocked, inTown));
@@ -284,6 +285,120 @@ function signTexture(text: string, kind: "town" | "dir"): THREE.CanvasTexture {
 }
 
 const POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x707880, roughness: 0.6, metalness: 0.7 });
+
+// ---- vintage enamel roadside advertising (invented 1960s Italian brands) ----
+const BILLBOARDS: { bg: string; ink: string; brand: string; sub: string; accent: string }[] = [
+  { bg: "#c0392b", ink: "#f6efdd", brand: "VERMUT ROSSI", sub: "l'aperitivo d'Italia", accent: "#e0b53a" },
+  { bg: "#1f5a5a", ink: "#f6efdd", brand: "PNEUMATICI VOLPE", sub: "la strada sicura", accent: "#e0b53a" },
+  { bg: "#ead9b6", ink: "#2c211a", brand: "CAFFE AURORA", sub: "il vero espresso", accent: "#c0392b" },
+  { bg: "#d99a2b", ink: "#2c211a", brand: "APERITIVO SOLE", sub: "con gusto!", accent: "#c0392b" },
+  { bg: "#2c211a", ink: "#f6efdd", brand: "OLIO SAN LORENZO", sub: "extra vergine", accent: "#9bb05a" },
+  { bg: "#6e7a45", ink: "#f6efdd", brand: "MOTO FALCO", sub: "velocita e stile", accent: "#e0b53a" },
+];
+
+const billboardTexCache = new Map<number, THREE.CanvasTexture>();
+
+function billboardTexture(i: number): THREE.CanvasTexture {
+  const cached = billboardTexCache.get(i);
+  if (cached) return cached;
+  const d = BILLBOARDS[i % BILLBOARDS.length];
+  const W = 512;
+  const H = 320;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = d.bg;
+  ctx.fillRect(0, 0, W, H);
+  // enamel double border
+  ctx.strokeStyle = d.ink;
+  ctx.lineWidth = 14;
+  ctx.strokeRect(11, 11, W - 22, H - 22);
+  ctx.strokeStyle = d.accent;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(28, 28, W - 56, H - 56);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // brand, wrapped onto two lines if it has multiple words
+  ctx.fillStyle = d.ink;
+  const words = d.brand.split(" ");
+  const lines = words.length > 1 ? [words.slice(0, -1).join(" "), words[words.length - 1]] : words;
+  ctx.font = "700 60px 'Bodoni Moda', Georgia, 'Times New Roman', serif";
+  const ly = lines.length > 1 ? [H * 0.36, H * 0.55] : [H * 0.45];
+  lines.forEach((ln, k) => ctx.fillText(ln, W / 2, ly[k]));
+  // subtitle, italic
+  ctx.fillStyle = d.accent;
+  ctx.font = "italic 28px 'Bodoni Moda', Georgia, serif";
+  ctx.fillText(d.sub, W / 2, H * 0.76);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  billboardTexCache.set(i, tex);
+  return tex;
+}
+
+const BILLBOARD_EDGE = new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.85 });
+const BILLBOARD_BACK = new THREE.MeshStandardMaterial({ color: 0x6b6258, roughness: 0.8 });
+const BILLBOARD_POST = new THREE.MeshStandardMaterial({ color: 0x5a4633, roughness: 0.9 });
+
+function buildBillboards(
+  map: MapData,
+  terrain: Terrain,
+  network: RoadNetwork,
+  rand: () => number,
+  blocked: (x: number, z: number, margin?: number) => boolean,
+  inTown: (x: number, z: number, extra?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "billboards";
+  let placed = 0;
+  const MAX = 14;
+  for (const path of network.paths) {
+    if (placed >= MAX) break;
+    if (path.samples.length < 30) continue; // long roads only
+    if (rand() > 0.6) continue; // not every road gets one
+    const i = Math.floor(path.samples.length * (0.3 + rand() * 0.4));
+    const s = path.samples[i];
+    if (s.x < map.coastX + 120) continue; // not down by the sea
+    if (inTown(s.x, s.z, 50)) continue;
+    const side = rand() < 0.5 ? 1 : -1;
+    const off = path.half + 6 + rand() * 4;
+    const bx = s.x - s.dirZ * off * side;
+    const bz = s.z + s.dirX * off * side;
+    if (blocked(bx, bz, 3) || inTown(bx, bz, 30)) continue;
+    const y = terrain.height(bx, bz);
+    // face the road: local +Z -> normal pointing back at the carriageway
+    const ry = Math.atan2(s.dirZ * side, -s.dirX * side);
+    const design = (placed + Math.floor(rand() * BILLBOARDS.length)) % BILLBOARDS.length;
+
+    const g = new THREE.Group();
+    g.position.set(bx, y, bz);
+    g.rotation.y = ry;
+    const PW = 4.2;
+    const PH = 2.6;
+    for (const px of [-PW * 0.36, PW * 0.36]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 5, 0.18), BILLBOARD_POST);
+      post.position.set(px, 2.5, 0);
+      post.castShadow = true;
+      g.add(post);
+    }
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, 0.16), [
+      BILLBOARD_EDGE,
+      BILLBOARD_EDGE,
+      BILLBOARD_EDGE,
+      BILLBOARD_EDGE,
+      new THREE.MeshStandardMaterial({ map: billboardTexture(design), roughness: 0.5 }),
+      BILLBOARD_BACK,
+    ]);
+    panel.position.set(0, 3.5, 0);
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    g.add(panel);
+    group.add(g);
+    placed++;
+  }
+  return group;
+}
 
 function buildSigns(map: MapData, terrain: Terrain, network: RoadNetwork): THREE.Group {
   const group = new THREE.Group();

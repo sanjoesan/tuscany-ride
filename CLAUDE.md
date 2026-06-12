@@ -68,6 +68,16 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (26)** - v0.8a "enamel roadside ads" (loop mode; extends the 60s theme into the world):
+- [x] Vintage enamel billboards (`buildBillboards` in scenery.ts): up to 14 hoardings along long
+      main roads, set back and facing the carriageway, on two timber posts. Six invented period
+      Italian brands (no real trademarks): VERMUT ROSSI, PNEUMATICI VOLPE, CAFFE AURORA, APERITIVO
+      SOLE, OLIO SAN LORENZO, MOTO FALCO - canvas enamel panels (double border, Bodoni brand +
+      italic subtitle) in the v0.8 palette. Avoids towns/sea/roads/river via blocked/inTown; the
+      ad panel is the +Z face of a thin Box (material array), back/edges plain enamel. Textures cached.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: period vehicles (Vespa/bubble-car) in traffic; self-host fonts; palette tuning from feedback
+
 **2026-06-12 (25)** - v0.8 "Italia, anni '60" - full UI restyle (user request):
 - [x] 1960s Italian look across the whole UI (`src/styles.css` rewritten): Bodoni (Didone) display
       type + Jost (Futura-like) geometric UI type, warm Mediterranean palette via CSS vars (aged
