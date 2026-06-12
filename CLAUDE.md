@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (24)** - v0.7r "gradient-coloured live profile" (loop mode, 5-min autonomous loop):
+- [x] The in-ride HUD elevation profile (already had a "you are here" marker) is now gradient-
+      coloured by grade like the menu preview (blue descent / green / amber / orange / red >9%),
+      and the stretch already ridden is dimmed to 0.3 alpha so progress reads at a glance.
+      `Hud.setPath` now also stores per-sample grade; `drawProfile` paints 2px columns + the marker.
+- [x] Discovered the live profile already existed (read first) - enhanced it rather than duplicating.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: grade % callouts on the strip, climb-ahead warning, cloud shadows (needs GPU verify)
+
 **2026-06-12 (23)** - v0.7q "elevation profile preview" (loop mode, 5-min autonomous loop):
 - [x] Route elevation profile in the menu: a `<canvas id="route-profile">` under the route info,
       drawn by `drawRouteProfile` in main.ts from `route.samples` (dist/y/grade). Per-pixel column

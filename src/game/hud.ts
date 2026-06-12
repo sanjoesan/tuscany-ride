@@ -5,7 +5,7 @@ const $ = (id: string) => document.getElementById(id)!;
 
 export class Hud {
   private profileCtx: CanvasRenderingContext2D;
-  private profile: { d: number; y: number }[] = [];
+  private profile: { d: number; y: number; grade: number }[] = [];
   private minY = 0;
   private maxY = 1;
   private total = 1;
@@ -46,7 +46,7 @@ export class Hud {
   }
 
   setPath(samples: RoadSample[], totalLength: number): void {
-    this.profile = samples.map((s) => ({ d: s.dist, y: s.y }));
+    this.profile = samples.map((s) => ({ d: s.dist, y: s.y, grade: s.grade }));
     this.total = totalLength;
     this.minY = Infinity;
     this.maxY = -Infinity;
@@ -79,6 +79,16 @@ export class Hud {
     this.drawProfile(v.rideDist);
   }
 
+  /** "r,g,b" for a gradient, so the climbs ahead read at a glance */
+  private gradeRGB(g: number): string {
+    const a = Math.abs(g) * 100;
+    if (g < -0.005) return "95,168,224"; // descent
+    if (a < 3) return "92,196,106"; // easy
+    if (a < 6) return "224,169,58"; // rolling
+    if (a < 9) return "224,107,42"; // steep
+    return "210,59,59"; // very steep
+  }
+
   private drawProfile(rideDist: number): void {
     if (this.profile.length === 0) return; // free ride has no fixed route
     const ctx = this.profileCtx;
@@ -86,32 +96,27 @@ export class Hud {
     const h = ctx.canvas.height;
     ctx.clearRect(0, 0, w, h);
     const range = Math.max(10, this.maxY - this.minY);
-    const px = (d: number) => (d / this.total) * w;
     const py = (y: number) => h - 8 - ((y - this.minY) / range) * (h - 18);
+    const d0 = ((rideDist % this.total) + this.total) % this.total;
 
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    for (const p of this.profile) ctx.lineTo(px(p.d), py(p.y));
-    ctx.lineTo(w, h);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(247, 183, 51, 0.25)";
-    ctx.fill();
-    ctx.beginPath();
-    for (let i = 0; i < this.profile.length; i++) {
-      const p = this.profile[i];
-      if (i === 0) ctx.moveTo(px(p.d), py(p.y));
-      else ctx.lineTo(px(p.d), py(p.y));
+    // gradient-coloured columns; the stretch already ridden is dimmed
+    const STEP = 2;
+    let si = 0;
+    for (let x = 0; x < w; x += STEP) {
+      const d = (x / (w - 1)) * this.total;
+      while (si < this.profile.length - 1 && this.profile[si + 1].d < d) si++;
+      const p = this.profile[si];
+      const top = py(p.y);
+      ctx.fillStyle = `rgba(${this.gradeRGB(p.grade)},${d < d0 ? 0.3 : 0.92})`;
+      ctx.fillRect(x, top, STEP, h - top);
     }
-    ctx.strokeStyle = "#f7b733";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
 
     // rider marker
-    const d = ((rideDist % this.total) + this.total) % this.total;
-    const idx = this.profile.findIndex((p) => p.d >= d);
+    const idx = this.profile.findIndex((p) => p.d >= d0);
     const yy = idx >= 0 ? this.profile[idx].y : this.profile[0].y;
+    const mx = (d0 / this.total) * w;
     ctx.beginPath();
-    ctx.arc(px(d), py(yy), 4.5, 0, Math.PI * 2);
+    ctx.arc(mx, py(yy), 4.5, 0, Math.PI * 2);
     ctx.fillStyle = "#ff4a3d";
     ctx.fill();
     ctx.strokeStyle = "#fff";
