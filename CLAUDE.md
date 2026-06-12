@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (9)** - v0.7c "boats under sail" (loop mode, 5-min autonomous loop):
+- [x] Fishing boats sailing the bay: 2 boats motor slow offshore ellipses (`Environment.buildSeaBoats`),
+      always seaward of `coastX`. Low-poly hull+bow cone+deck+cabin+mast (same palette as the moored
+      harbour boats). Heading follows the ellipse tangent (bow = local +X -> `y = atan2(-vz, vx)`),
+      gentle bob + roll. Lives in Environment, so they survive map rebuilds.
+- [x] Foam bow wakes: a flat trapezoid trailing each stern (local -X), fanning out astern, with a
+      canvas wake texture - two bright diverging lines + churn, tapering from strong at the hull to
+      nothing at the tail. `depthWrite:false`, `renderOrder:3`, opacity pulses and dims at night.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: ambient audio?, perf pass, more creative ideas
+
 **2026-06-12 (8)** - v0.7b "surf on the shoreline" (loop mode, 5-min autonomous loop):
 - [x] Animated shoreline foam: a lacy white surf band runs the full coast at the waterline
       (`Environment.buildShoreFoam`). Canvas-generated foam texture - alpha peaks across the

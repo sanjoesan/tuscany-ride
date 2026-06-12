@@ -1077,6 +1077,7 @@ export class Environment {
     this.buildBirds();
     this.buildBalloons();
     this.buildShoreFoam();
+    this.buildSeaBoats();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1257,6 +1258,81 @@ export class Environment {
     this.shoreFoam = mesh;
   }
 
+  // ---------- fishing boats sailing the bay, trailing a foam wake ----------
+  private seaBoats: {
+    group: THREE.Group;
+    wakeMat: THREE.MeshBasicMaterial;
+    cx: number;
+    cz: number;
+    rx: number;
+    rz: number;
+    speed: number;
+    phase: number;
+    bobPh: number;
+  }[] = [];
+
+  private buildSeaBoats(): void {
+    const rand = mulberry32(31337);
+    const HULLS = [0xc23b2e, 0x2a5d8f, 0xe8e4da, 0x2e7d4f, 0xd4842a];
+    const wakeTex = buildWakeTexture(); // shared by all boats
+    for (let i = 0; i < 2; i++) {
+      const group = new THREE.Group();
+      const hullColor = HULLS[Math.floor(rand() * HULLS.length)];
+      const hullMat = new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.55 });
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.1, 2.0), hullMat); // bow = +X
+      hull.position.y = 0.3;
+      group.add(hull);
+      const bow = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.9, 4), hullMat);
+      bow.rotation.z = -Math.PI / 2;
+      bow.rotation.y = Math.PI / 4;
+      bow.position.set(3.4, 0.3, 0);
+      group.add(bow);
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(4.4, 0.18, 1.5),
+        new THREE.MeshStandardMaterial({ color: 0xb09467, roughness: 0.8 })
+      );
+      deck.position.y = 0.85;
+      group.add(deck);
+      const cabin = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 1.1, 1.3),
+        new THREE.MeshStandardMaterial({ color: 0xf0ece2, roughness: 0.7 })
+      );
+      cabin.position.set(-0.8, 1.4, 0);
+      group.add(cabin);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.2, 6), deck.material);
+      mast.position.set(0.8, 2.7, 0);
+      group.add(mast);
+      group.traverse((o) => (o.castShadow = true));
+
+      // foam wake trailing the stern (local -X), laid flat just above the sea
+      const wakeMat = new THREE.MeshBasicMaterial({
+        map: wakeTex,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0.65,
+        fog: true,
+        side: THREE.DoubleSide,
+      });
+      const wake = new THREE.Mesh(buildWakeGeometry(), wakeMat);
+      wake.position.y = -0.05;
+      wake.renderOrder = 3;
+      group.add(wake);
+
+      this.scene.add(group);
+      this.seaBoats.push({
+        group,
+        wakeMat,
+        cx: this.map.coastX - 330,
+        cz: (rand() - 0.5) * this.map.size * 0.2,
+        rx: 150 + rand() * 90,
+        rz: this.map.size * (0.3 + rand() * 0.12),
+        speed: 0.02 + rand() * 0.012,
+        phase: rand() * 6.28,
+        bobPh: rand() * 6.28,
+      });
+    }
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1344,6 +1420,20 @@ export class Environment {
       this.shoreFoam.position.x = this.map.coastX + 18 + Math.sin(t * 0.45) * 3.5;
       const mat = this.shoreFoam.material as THREE.MeshBasicMaterial;
       mat.opacity = (this.isNight ? 0.3 : 0.78) * (0.7 + 0.3 * Math.sin(t * 0.9 + 1.3));
+    }
+    // fishing boats sail slow offshore loops, bow pointed along their heading
+    for (const sb of this.seaBoats) {
+      const a = t * sb.speed + sb.phase;
+      sb.group.position.set(
+        sb.cx + Math.cos(a) * sb.rx,
+        0.12 + Math.sin(t * 0.8 + sb.bobPh) * 0.12,
+        sb.cz + Math.sin(a) * sb.rz
+      );
+      // heading = ellipse tangent; bow is local +X, which maps to world
+      // (cos y, 0, -sin y), so y = atan2(-vz, vx) keeps the bow leading
+      sb.group.rotation.y = Math.atan2(-Math.cos(a) * sb.rz, -Math.sin(a) * sb.rx);
+      sb.group.rotation.z = Math.sin(t * 0.7 + sb.bobPh) * 0.04;
+      sb.wakeMat.opacity = this.isNight ? 0.32 : 0.58 + 0.12 * Math.sin(t * 1.6 + sb.bobPh);
     }
     if (this.mode === "cycle") {
       const phase = (t / CYCLE_DAY_SECONDS) % 1;
@@ -1433,6 +1523,58 @@ function buildFoamTexture(): THREE.Texture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/** Flat trapezoid trailing the stern (-X), narrow at the hull, fanning out astern. */
+function buildWakeGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  // A,B at the stern (x=-2.8); C,D at the tail (x=-40), fanned wide
+  const verts = new Float32Array([
+    -2.8, 0, -0.8, // A
+    -2.8, 0, 0.8, // B
+    -40, 0, 6.5, // C
+    -40, 0, -6.5, // D
+  ]);
+  const uv = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+  g.setAttribute("position", new THREE.BufferAttribute(verts, 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Foam wake texture: two bright diverging lines (the bow wake), churn between,
+ * all tapering from strong at the stern (V=0) to nothing at the tail (V=1).
+ */
+function buildWakeTexture(): THREE.Texture {
+  const W = 64; // across the wake (U)
+  const H = 128; // stern -> tail (V)
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(W, H);
+  const n = new Noise2D(70);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const v = y / (H - 1);
+      const taper = Math.pow(1 - v, 1.3); // fades astern
+      const eL = Math.exp(-Math.pow((u - 0.16) / 0.1, 2));
+      const eR = Math.exp(-Math.pow((u - 0.84) / 0.1, 2));
+      const fill = 0.22 * Math.exp(-Math.pow((u - 0.5) / 0.4, 2));
+      const churn = 0.5 + 0.5 * n.noise(u * 6, v * 10);
+      const a = Math.max(0, Math.min(1, taper * ((eL + eR) * 0.9 + fill) * (0.5 + 0.7 * churn)));
+      const i = (y * W + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
 
