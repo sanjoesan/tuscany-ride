@@ -68,6 +68,16 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (18)** - v0.7l "the windmill" (loop mode, 5-min autonomous loop):
+- [x] Inland windmill (`buildWindmill` in scenery.ts): a stone tower (taper + timber cap + windows)
+      placed on the highest of 40 seeded inland candidates that clear roads/towns/river (`blocked`/
+      `inTown`), seeded off `map.seed` so it's stable per map. Four cloth-and-spar sails on a pivot.
+- [x] Generic spinner system: pivot tagged `userData.spin = {axis,speed}`; World collects spinners
+      per rebuild (alongside bobbers/beacons) and rotates them each frame in `World.update`. Sails
+      turn about the axle (X) in the Y-Z plane; the windmill faces a random way per map.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: real perf pass from user fps, watermill on the river, cloud shadows, church bells
+
 **2026-06-12 (17)** - v0.7k "perf overlay + cloud material share" (loop mode, 5-min autonomous loop):
 - [x] Perf overlay (toggle `P`, or boot with `#stats`): a small top-left monospace HUD built in
       `main.ts` showing fps, frame ms, draw calls, k-triangles and live geometry/texture counts

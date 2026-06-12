@@ -27,6 +27,8 @@ export class World {
   private bobbers: { obj: THREE.Object3D; baseY: number; baseRoll: number; phase: number; amp: number; roll: number }[] = [];
   /** lighthouse beam pivots that sweep and glow at night (collected per rebuild) */
   private beacons: { pivot: THREE.Object3D; speed: number }[] = [];
+  /** things that simply spin about an axis, e.g. windmill sails (per rebuild) */
+  private spinners: { obj: THREE.Object3D; axis: "x" | "y" | "z"; speed: number }[] = [];
 
   constructor(scene: THREE.Scene, map: MapData, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
@@ -65,6 +67,7 @@ export class World {
     // collect the things that bob on the water + lighthouse beams to animate
     this.bobbers = [];
     this.beacons = [];
+    this.spinners = [];
     group.traverse((o) => {
       const b = o.userData.bob as { phase: number; amp: number; roll: number } | undefined;
       if (b) {
@@ -79,6 +82,8 @@ export class World {
       }
       const beacon = o.userData.beacon as { speed: number } | undefined;
       if (beacon) this.beacons.push({ pivot: o, speed: beacon.speed });
+      const spin = o.userData.spin as { axis: "x" | "y" | "z"; speed: number } | undefined;
+      if (spin) this.spinners.push({ obj: o, axis: spin.axis, speed: spin.speed });
     });
   }
 
@@ -105,6 +110,10 @@ export class World {
           if (mat) mat.opacity = beamOpacity;
         }
       }
+    }
+    // windmill sails and other simple spinners
+    for (const s of this.spinners) {
+      s.obj.rotation[s.axis] = t * s.speed;
     }
   }
 }

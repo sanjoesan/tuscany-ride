@@ -231,6 +231,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
   group.add(buildSigns(map, terrain, network));
   group.add(buildHarbour(map, terrain, rand));
   group.add(buildLighthouse(map, terrain));
+  group.add(buildWindmill(map, terrain, blocked, inTown));
   group.add(buildAnimals(map, terrain, rand, blocked, inTown));
   group.add(buildHayBales(map, terrain, rand, blocked, inTown));
   group.add(buildSunflowers(map, terrain, rand, blocked, inTown));
@@ -566,6 +567,91 @@ function buildLighthouse(map: MapData, terrain: Terrain): THREE.Group {
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.rotation.y = s * Math.PI;
     pivot.add(beam);
+  }
+  group.add(pivot);
+
+  return group;
+}
+
+// ====================================================================
+// windmill: a stone tower on a hill with sails that turn (userData.spin,
+// rotated each frame by World.update)
+// ====================================================================
+
+function buildWindmill(
+  map: MapData,
+  terrain: Terrain,
+  blocked: (x: number, z: number, margin?: number) => boolean,
+  inTown: (x: number, z: number, extra?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "windmill";
+  const rand = mulberry32(((map.seed ?? 12345) ^ 0x5151) >>> 0);
+  const half = map.size / 2;
+
+  // pick the highest clear spot among a few inland candidates (a hilltop)
+  let best: { x: number; z: number } | null = null;
+  let bestH = -1e9;
+  for (let i = 0; i < 40; i++) {
+    const x = map.coastX + 1200 + rand() * Math.max(200, half - map.coastX - 1300);
+    const z = -half + 200 + rand() * (map.size - 400);
+    if (blocked(x, z, 16) || inTown(x, z, 70)) continue;
+    const h = terrain.height(x, z);
+    if (h > bestH) {
+      bestH = h;
+      best = { x, z };
+    }
+  }
+  if (!best) return group;
+
+  const baseY = terrain.height(best.x, best.z);
+  group.position.set(best.x, baseY, best.z);
+  group.rotation.y = rand() * Math.PI * 2; // face a random way
+
+  const stone = new THREE.MeshStandardMaterial({ color: 0xd8cdb6, roughness: 0.9 });
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 4.0, 12, 16), stone);
+  tower.position.y = 6;
+  tower.castShadow = tower.receiveShadow = true;
+  group.add(tower);
+
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(3.4, 3.2, 16),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 })
+  );
+  roof.position.y = 13.4;
+  roof.castShadow = true;
+  group.add(roof);
+
+  // a couple of small windows
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.7 });
+  for (let i = 0; i < 3; i++) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.3), dark);
+    const a = (i / 3) * Math.PI * 2 + 0.5;
+    w.position.set(Math.cos(a) * 3.4, 5 + i * 2.2, Math.sin(a) * 3.4);
+    w.lookAt(w.position.x * 2, w.position.y, w.position.z * 2);
+    group.add(w);
+  }
+
+  // sail assembly on a pivot at the front of the cap (axle along +X)
+  const pivot = new THREE.Group();
+  pivot.position.set(3.6, 11.5, 0);
+  pivot.userData.spin = { axis: "x", speed: 0.5 };
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.2, 10), dark);
+  hub.rotation.z = Math.PI / 2; // axle along X
+  pivot.add(hub);
+
+  const sparMat = new THREE.MeshStandardMaterial({ color: 0x5a3f24, roughness: 0.8 });
+  const clothMat = new THREE.MeshStandardMaterial({ color: 0xeae4d2, roughness: 0.85, side: THREE.DoubleSide });
+  for (let k = 0; k < 4; k++) {
+    const arm = new THREE.Group();
+    arm.rotation.x = (k * Math.PI) / 2; // sails rotate in the Y-Z plane
+    const spar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 7.2, 0.22), sparMat);
+    spar.position.y = 3.7;
+    arm.add(spar);
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.2, 1.3), clothMat);
+    cloth.position.set(0, 3.7, 0.85);
+    arm.add(cloth);
+    pivot.add(arm);
   }
   group.add(pivot);
 
