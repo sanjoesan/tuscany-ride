@@ -1258,7 +1258,8 @@ function buildGrassTexture(): THREE.CanvasTexture {
     const lean = (Math.random() - 0.5) * 26;
     const h = 30 + Math.random() * 60;
     const g = 110 + Math.random() * 90;
-    ctx.strokeStyle = `rgb(${g * 0.55}, ${g}, ${g * 0.4})`;
+    // drier, strawier blades so the verge sits in the golden fields
+    ctx.strokeStyle = `rgb(${g * 0.68}, ${g * 0.92}, ${g * 0.38})`;
     ctx.lineWidth = 2.5 + Math.random() * 2;
     ctx.beginPath();
     ctx.moveTo(x0, H);

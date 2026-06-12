@@ -40,49 +40,52 @@ interface SeasonPalette {
   verge: RGB;
 }
 
-/** Tuscany through the year: field colors per season. */
+/** Tuscany through the year: field colors per season (warm, golden tuning). */
 export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
   spring: {
-    wheat: [0.45, 0.58, 0.27], // young green wheat
-    pasture: [0.38, 0.55, 0.23],
-    vine: [0.3, 0.48, 0.19],
-    vineEarth: [0.5, 0.41, 0.29],
-    plow: [0.45, 0.35, 0.24],
-    olive: [0.42, 0.5, 0.26],
-    scrub: [0.36, 0.44, 0.25],
-    verge: [0.3, 0.5, 0.18],
+    wheat: [0.52, 0.6, 0.28], // young green wheat, a touch warmer
+    pasture: [0.44, 0.56, 0.24],
+    vine: [0.32, 0.48, 0.19],
+    vineEarth: [0.55, 0.43, 0.28],
+    plow: [0.51, 0.38, 0.24],
+    olive: [0.45, 0.51, 0.26],
+    scrub: [0.41, 0.45, 0.25],
+    verge: [0.34, 0.5, 0.18],
   },
   summer: {
-    wheat: [0.76, 0.64, 0.32], // ripe gold
-    pasture: [0.55, 0.52, 0.3],
-    vine: [0.3, 0.42, 0.18],
-    vineEarth: [0.52, 0.42, 0.3],
-    plow: [0.52, 0.4, 0.27],
-    olive: [0.5, 0.48, 0.3],
-    scrub: [0.42, 0.42, 0.28],
-    verge: [0.33, 0.47, 0.2],
+    wheat: [0.88, 0.71, 0.31], // ripe Tuscan gold
+    pasture: [0.72, 0.59, 0.3], // sun-dried golden pasture
+    vine: [0.35, 0.45, 0.18], // vines stay green for contrast
+    vineEarth: [0.62, 0.45, 0.27], // warm sienna earth
+    plow: [0.62, 0.42, 0.24], // terracotta tilth
+    olive: [0.56, 0.52, 0.3], // warm sage
+    scrub: [0.54, 0.47, 0.27], // dry golden scrub
+    verge: [0.46, 0.49, 0.22],
   },
   autumn: {
-    wheat: [0.6, 0.49, 0.3], // stubble
-    pasture: [0.5, 0.45, 0.27],
-    vine: [0.55, 0.3, 0.12], // vines turn red and gold
-    vineEarth: [0.48, 0.38, 0.27],
-    plow: [0.44, 0.34, 0.24],
-    olive: [0.46, 0.43, 0.28],
-    scrub: [0.44, 0.4, 0.26],
-    verge: [0.38, 0.42, 0.2],
+    wheat: [0.68, 0.52, 0.28], // golden stubble
+    pasture: [0.6, 0.49, 0.27],
+    vine: [0.62, 0.31, 0.12], // vines turn red and gold
+    vineEarth: [0.56, 0.41, 0.26],
+    plow: [0.52, 0.37, 0.24],
+    olive: [0.52, 0.46, 0.27],
+    scrub: [0.54, 0.44, 0.26],
+    verge: [0.46, 0.45, 0.2],
   },
   winter: {
-    wheat: [0.5, 0.44, 0.33], // bare fields
-    pasture: [0.46, 0.48, 0.34],
-    vine: [0.4, 0.34, 0.26], // bare rows
-    vineEarth: [0.46, 0.4, 0.32],
-    plow: [0.42, 0.35, 0.27],
-    olive: [0.44, 0.46, 0.32],
-    scrub: [0.4, 0.42, 0.3],
-    verge: [0.4, 0.44, 0.3],
+    wheat: [0.54, 0.46, 0.33], // bare fields, slightly warm
+    pasture: [0.5, 0.5, 0.33],
+    vine: [0.42, 0.35, 0.26], // bare rows
+    vineEarth: [0.5, 0.42, 0.31],
+    plow: [0.46, 0.37, 0.27],
+    olive: [0.46, 0.47, 0.31],
+    scrub: [0.44, 0.43, 0.29],
+    verge: [0.42, 0.45, 0.29],
   },
 };
+
+/** Sun-baked Tuscan gold the whole farmland is nudged toward, for cohesion. */
+const GOLDEN_TINT = new THREE.Color(0.88, 0.71, 0.34);
 
 export class Terrain {
   readonly map: MapData;
@@ -360,6 +363,9 @@ export class Terrain {
     } else {
       out.setRGB(pal.olive[0] + v, pal.olive[1] + v, pal.olive[2] + v); // olive grove ground
     }
+
+    // warm the whole farmland a touch toward sun-baked gold, for cohesion
+    out.lerp(GOLDEN_TINT, 0.1);
 
     // towns get warm stone paving; the piazza a pale circular cobble pattern
     for (const town of m.towns) {

@@ -68,6 +68,19 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (27)** - v0.8b "golden Tuscany" (user request: terrain warmer/more golden):
+- [x] Reworked `SEASON_PALETTES` toward warm gold/sienna - summer most (ripe-gold wheat 0.88/0.71/0.31,
+      sun-dried golden pasture, terracotta plow/sienna vine-earth, warm sage olive). Olives/vines/
+      riverbanks kept green for the classic gold-vs-green Tuscan contrast. Spring/autumn/winter
+      nudged warmer too.
+- [x] Added a `GOLDEN_TINT` cohesion pass: every farmland pixel `out.lerp(GOLDEN_TINT, 0.1)` after
+      the field branch (water/river/beach/town untouched - they return earlier).
+- [x] Roadside grass tufts dried toward straw (`rgb(g*0.68, g*0.92, g*0.38)`) so the verge sits in
+      the golden fields.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Headless screenshot capture unavailable in
+      this env - change is pure colour data, zero render risk; awaiting user's eye on intensity.)
+- [ ] Next: tune gold strength from user feedback; warm the sun/ambient for golden-hour; period vehicles
+
 **2026-06-12 (26)** - v0.8a "enamel roadside ads" (loop mode; extends the 60s theme into the world):
 - [x] Vintage enamel billboards (`buildBillboards` in scenery.ts): up to 14 hoardings along long
       main roads, set back and facing the carriageway, on two timber posts. Six invented period
