@@ -634,10 +634,13 @@ function buildCampanile(map: MapData, terrain: Terrain): THREE.Group {
     group.add(hand);
   }
 
-  // the bell, hung in the belfry on a pivot that rocks (userData.swing)
+  // the bell, hung in the belfry. It idles with a gentle World-driven sway
+  // (userData.swing); the main-loop carillon overrides it with a hard swing
+  // during a peal. Named so the carillon can find it after every rebuild.
   const pivot = new THREE.Group();
+  pivot.name = "bell";
   pivot.position.set(tx, belfryY + 1.6, tz);
-  pivot.userData.swing = { axis: "x", amp: 0.32, speed: 1.7, phase: 0 };
+  pivot.userData.swing = { axis: "x", amp: 0.08, speed: 1.0, phase: 0 };
   const bellMat = new THREE.MeshStandardMaterial({ color: 0x6e5a22, roughness: 0.45, metalness: 0.7 });
   const bell = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.5, 14), bellMat);
   bell.position.y = -1.6;

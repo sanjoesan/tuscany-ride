@@ -68,6 +68,19 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (21)** - v0.7o "the bells, the bells" (loop mode, 5-min autonomous loop):
+- [x] Bell toll sound (`AmbientAudio.bellToll`): a struck church bell synthesised from inharmonic
+      partials (hum/prime/tierce/quint/nominal...) with fast attacks and long, partial-dependent
+      decays - the minor-third tierce gives the brooding bell colour. Web Audio, no samples.
+- [x] Carillon controller (`main.ts`): the bell rings out in peals (~8-13 s) every ~2.5-5.7 min,
+      daytime only. During a peal it OVERRIDES the bell's idle World sway with a hard swing
+      (`BELL_W`) and strikes the tone at each swing extreme - sound and motion synced. Runs after
+      `world.update` so it wins; re-acquires the named "bell" object after every rebuild; bellToll
+      is a no-op until audio has started (first ride) or when muted.
+- [x] Idle sway reduced (amp 0.32 -> 0.08) so the bell just hangs between peals.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: cloud shadows, perf pass from user fps, hourly chime count, market-day crowds
+
 **2026-06-12 (20)** - v0.7n "the campanile" (loop mode, 5-min autonomous loop):
 - [x] Bell tower (`buildCampanile` in scenery.ts): a square stone shaft + belfry stage with four
       dark arched openings + pyramidal cap + a small clock face, placed just off the piazza of the

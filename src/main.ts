@@ -29,6 +29,14 @@ let perfOn = false;
 let perfAccum = 0;
 let perfFrames = 0;
 
+// campanile carillon: the bell rings out in occasional peals (swing + sound synced)
+let bell: THREE.Object3D | null = null;
+let pealStart = 0;
+let pealUntil = 0;
+let nextPeal = 45; // first peal ~45 s in
+let lastStrikeK = 0;
+const BELL_W = 3.2; // swing angular speed during a peal (rad/s)
+
 // ---------------- renderer / scene ----------------
 const canvas = $("scene") as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -388,6 +396,28 @@ function animate(): void {
   const t = clock.elapsedTime;
   world.update(t, camera.position);
   ambient.setNight(world.environment.isNight);
+
+  // carillon: during a peal, override the bell's idle sway with a hard swing
+  // and strike the bell tone at each extreme (runs after world.update so it wins)
+  if (!bell || !bell.parent) bell = scene.getObjectByName("bell") ?? null;
+  if (bell) {
+    if (t >= pealUntil && t >= nextPeal && !world.environment.isNight) {
+      pealStart = t;
+      pealUntil = t + 8 + Math.random() * 5;
+      nextPeal = pealUntil + 150 + Math.random() * 180;
+      lastStrikeK = Math.floor((t * BELL_W - Math.PI / 2) / Math.PI);
+    }
+    if (t < pealUntil) {
+      const amp = 0.5 * Math.min(1, (t - pealStart) / 1.0) * Math.min(1, (pealUntil - t) / 1.5);
+      const ph = t * BELL_W;
+      bell.rotation.x = amp * Math.sin(ph);
+      const k = Math.floor((ph - Math.PI / 2) / Math.PI);
+      if (k !== lastStrikeK) {
+        lastStrikeK = k;
+        ambient.bellToll(300);
+      }
+    }
+  }
   // a few times a second, tell the soundscape where we are (surf near the coast)
   audioSceneAccum += dt;
   if (audioSceneAccum > 0.2) {

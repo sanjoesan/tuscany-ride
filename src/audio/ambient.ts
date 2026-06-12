@@ -50,6 +50,41 @@ export class AmbientAudio {
   }
 
   /**
+   * One struck church-bell tone: a stack of inharmonic partials (hum, prime,
+   * tierce, quint, nominal...) with fast attacks and long, partial-dependent
+   * decays. Called by the carillon controller on each swing of the campanile.
+   */
+  bellToll(f0 = 300): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const partials = [
+      { r: 0.5, g: 0.25, d: 3.4 }, // hum
+      { r: 1.0, g: 0.5, d: 2.9 }, // prime
+      { r: 1.19, g: 0.26, d: 2.1 }, // tierce (minor third - the brooding bell colour)
+      { r: 1.5, g: 0.2, d: 1.7 }, // quint
+      { r: 2.0, g: 0.18, d: 1.3 }, // nominal
+      { r: 2.66, g: 0.1, d: 0.8 },
+      { r: 3.36, g: 0.07, d: 0.5 },
+    ];
+    const out = ctx.createGain();
+    out.gain.value = 0.5;
+    out.connect(this.master);
+    for (const p of partials) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f0 * p.r;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(p.g, now + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0008, now + p.d);
+      osc.connect(g).connect(out);
+      osc.start(now);
+      osc.stop(now + p.d + 0.1);
+    }
+  }
+
+  /**
    * Adapt the mix to where the rider is. `coastDist` is metres inland from the
    * waterline (<=0 at/over the sea); `speedKmh` is the current ground speed.
    * Surf swells near the shore and fades ~1.2 km inland; wind rises with speed.
