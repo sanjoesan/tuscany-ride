@@ -8,9 +8,14 @@ import { HeartRateSensor } from "./bluetooth/heartRate";
 import { VirtualTrainer } from "./bluetooth/virtualTrainer";
 import { Editor } from "./editor/editor";
 import { NpcManager } from "./game/npc";
+import { AmbientAudio } from "./audio/ambient";
 import type { Telemetry } from "./types";
 
 const $ = (id: string) => document.getElementById(id)!;
+
+// procedural wind/sea/bird soundscape; started on the first ride (user gesture)
+const ambient = new AmbientAudio();
+let audioHintShown = false;
 
 // ---------------- renderer / scene ----------------
 const canvas = $("scene") as HTMLCanvasElement;
@@ -147,6 +152,13 @@ function startRide(): void {
   }
   $("menu").classList.add("hidden");
   mode = "riding";
+
+  // kick off the ambient soundscape (this click is the required user gesture)
+  ambient.start();
+  if (!audioHintShown && !ambient.isMuted) {
+    audioHintShown = true;
+    setTimeout(() => toast("♪ Ambient sound on — press M to mute"), 3500);
+  }
 }
 
 function endRide(): void {
@@ -291,6 +303,10 @@ $("btn-reset-map").onclick = () => {
 };
 
 window.addEventListener("keydown", (e) => {
+  if (e.key === "m" || e.key === "M") {
+    toast(ambient.toggleMute() ? "♪ Sound muted" : "♪ Sound on");
+    return;
+  }
   if (mode !== "riding" || !ride) return;
   if (e.key === "c" || e.key === "C") ride.cycleCamera();
   else if (e.key === "ArrowLeft") {
@@ -354,6 +370,7 @@ function animate(): void {
   const dt = Math.min(clock.getDelta(), 0.1);
   const t = clock.elapsedTime;
   world.update(t, camera.position);
+  ambient.setNight(world.environment.isNight);
   pollGamepad();
   if (mode !== "editor") {
     npcs?.update(

@@ -68,6 +68,19 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (10)** - v0.7d "ambient sound" (loop mode, 5-min autonomous loop):
+- [x] Procedural soundscape (`src/audio/ambient.ts`, `AmbientAudio`): wind (band-passed leaky-noise
+      loop, slow breathing LFO), a rolling sea swell (low-passed noise, ~9 s swell LFO) and sparse
+      birdsong (scheduled sine warbles, quiet after dusk). All Web Audio - no sound files, stays
+      offline/self-contained. AudioContext is created lazily inside `start()` so importing the
+      module never touches the audio API (headless tools/smoketests stay safe).
+- [x] Wired in `main.ts`: `ambient.start()` fires from the Start-Ride click (the required user
+      gesture for autoplay); `M` toggles mute (persisted in `roadgame.muted`, works in any mode);
+      birds gate on `world.environment.isNight` each frame; one-time "press M to mute" hint toast.
+      All audio calls are wrapped in try/catch - sound can never break the ride.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, dynamic sea/wind volume by proximity to coast, more creative ideas
+
 **2026-06-12 (9)** - v0.7c "boats under sail" (loop mode, 5-min autonomous loop):
 - [x] Fishing boats sailing the bay: 2 boats motor slow offshore ellipses (`Environment.buildSeaBoats`),
       always seaward of `coastX`. Low-poly hull+bow cone+deck+cabin+mast (same palette as the moored
