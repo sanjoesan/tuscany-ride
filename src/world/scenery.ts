@@ -268,6 +268,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
   group.add(buildLighthouse(map, terrain));
   group.add(buildWindmill(map, terrain, blocked, inTown));
   group.add(buildCampanile(map, terrain));
+  group.add(buildCafes(map, terrain, rand, blocked));
   group.add(buildAnimals(map, terrain, rand, blocked, inTown));
   group.add(buildHayBales(map, terrain, rand, blocked, inTown));
   group.add(buildSunflowers(map, terrain, rand, blocked, inTown));
@@ -799,6 +800,119 @@ function buildCampanile(map: MapData, terrain: Terrain): THREE.Group {
   pivot.add(crown);
   group.add(pivot);
 
+  return group;
+}
+
+// ====================================================================
+// piazza cafe terraces: bistro tables, chairs and striped parasols
+// ====================================================================
+
+const CAFE_TABLE_MAT = new THREE.MeshStandardMaterial({ color: 0xeae4d2, roughness: 0.5, metalness: 0.3 });
+const CAFE_CHAIR_MAT = new THREE.MeshStandardMaterial({ color: 0x37463a, roughness: 0.6, metalness: 0.3 });
+const CAFE_POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x6b5a44, roughness: 0.85 });
+const PARASOL_PAIRS: [string, string][] = [
+  ["#c0392b", "#f3ead2"],
+  ["#2e6b4f", "#f3ead2"],
+  ["#d99a2b", "#f3ead2"],
+  ["#1f5a5a", "#f3ead2"],
+];
+const parasolTexCache = new Map<number, THREE.CanvasTexture>();
+
+function parasolTexture(i: number): THREE.CanvasTexture {
+  const cached = parasolTexCache.get(i);
+  if (cached) return cached;
+  const [a, b] = PARASOL_PAIRS[i % PARASOL_PAIRS.length];
+  const W = 256;
+  const H = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const stripes = 10; // -> 10 wedges around the cone
+  for (let s = 0; s < stripes; s++) {
+    ctx.fillStyle = s % 2 === 0 ? b : a;
+    ctx.fillRect((s * W) / stripes, 0, W / stripes + 1, H);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  parasolTexCache.set(i, tex);
+  return tex;
+}
+
+function makeCafe(rand: () => number, stripeIdx: number): THREE.Group {
+  const g = new THREE.Group();
+  // round bistro table
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 16), CAFE_TABLE_MAT);
+  top.position.y = 0.74;
+  g.add(top);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.74, 8), CAFE_TABLE_MAT);
+  leg.position.y = 0.37;
+  g.add(leg);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 12), CAFE_TABLE_MAT);
+  foot.position.y = 0.02;
+  g.add(foot);
+  // two or three chairs facing the table
+  const nch = 2 + Math.floor(rand() * 2);
+  for (let k = 0; k < nch; k++) {
+    const a = (k / nch) * Math.PI * 2 + rand() * 0.3;
+    const cx = Math.cos(a) * 0.62;
+    const cz = Math.sin(a) * 0.62;
+    const chair = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.3), CAFE_CHAIR_MAT);
+    seat.position.y = 0.44;
+    chair.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.05), CAFE_CHAIR_MAT);
+    back.position.set(0, 0.62, -0.13);
+    chair.add(back);
+    for (const [lx, lz] of [[0.12, 0.12], [0.12, -0.12], [-0.12, 0.12], [-0.12, -0.12]] as [number, number][]) {
+      const l = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.44, 0.04), CAFE_CHAIR_MAT);
+      l.position.set(lx, 0.22, lz);
+      chair.add(l);
+    }
+    chair.position.set(cx, 0, cz);
+    chair.rotation.y = Math.atan2(-cx, -cz);
+    g.add(chair);
+  }
+  // striped parasol
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.3, 8), CAFE_POLE_MAT);
+  pole.position.y = 1.15;
+  g.add(pole);
+  const canopy = new THREE.Mesh(
+    new THREE.ConeGeometry(1.55, 0.6, 12),
+    new THREE.MeshStandardMaterial({ map: parasolTexture(stripeIdx), side: THREE.DoubleSide, roughness: 0.7 })
+  );
+  canopy.position.y = 2.4;
+  g.add(canopy);
+  g.traverse((o) => (o.castShadow = true));
+  return g;
+}
+
+function buildCafes(
+  map: MapData,
+  terrain: Terrain,
+  rand: () => number,
+  blocked: (x: number, z: number, margin?: number) => boolean
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "cafes";
+  for (const town of map.towns) {
+    const n = town.radius > 110 ? 3 : 2;
+    let placed = 0;
+    let tries = 0;
+    while (placed < n && tries++ < 30) {
+      const a = rand() * Math.PI * 2;
+      const r = town.radius * (0.16 + rand() * 0.22); // the open piazza ring
+      const x = town.x + Math.cos(a) * r;
+      const z = town.z + Math.sin(a) * r;
+      if (Math.hypot(x - town.x, z - town.z) < 11) continue; // off the fountain/statue
+      if (blocked(x, z, 4)) continue; // off the road
+      const cafe = makeCafe(rand, Math.floor(rand() * PARASOL_PAIRS.length));
+      cafe.position.set(x, terrain.height(x, z), z);
+      cafe.rotation.y = rand() * Math.PI * 2;
+      group.add(cafe);
+      placed++;
+    }
+  }
   return group;
 }
 

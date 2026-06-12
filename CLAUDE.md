@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (33)** - v0.8h "piazza cafe terraces" (Dolce Vita life in the towns):
+- [x] Cafe terraces (`buildCafes`/`makeCafe` in scenery.ts): 2-3 per town in the open piazza ring
+      (radius 0.16-0.38, off the fountain, off the road via `blocked`). Each = round bistro table
+      (top/leg/foot), 2-3 facing chairs (seat/back/legs), and a striped parasol (cone with a vertical-
+      stripe CanvasTexture -> 10 wedges, DoubleSide). Four 60s stripe pairs (red/green/ochre/petrol
+      on cream); parasol textures + shared table/chair/pole mats cached.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: seated patrons at the cafes; villa at the avenue's end; Piaggio Ape
+
 **2026-06-12 (32)** - v0.8g "le cicale" (summer cicada chorus):
 - [x] Cicada layer in `AmbientAudio`: white-noise -> highpass -> 5.2 kHz bandpass -> fast 52 Hz
       tremolo (the buzz) -> slow 0.13 Hz chorus swell -> level -> master. `setCicadas(on)` ramps the
