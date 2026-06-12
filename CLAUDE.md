@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (31)** - v0.8f "cypress avenue" (the postcard Tuscan road):
+- [x] A grand cypress avenue (in buildScenery): picks the longest inland "main" road (mid past
+      coastX+700) and lines BOTH sides with tall cypresses every ~9 m, set back `half+4`, avoiding
+      towns/roads/river. Taller scale (1.3-1.7) for grandeur. Reuses `put("cypress")` so they merge
+      into the existing cypress InstancedMesh - no new draw calls/models.
+- [x] Pairs with the golden hills for the classic Tuscany postcard look.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: confirm yellow with user; villa at the avenue's end; Piaggio Ape three-wheeler; cicadas
+
 **2026-06-12 (30)** - v0.8e "Vespas + much yellower terrain" (loop + user feedback):
 - [x] USER FEEDBACK "Terrain sollte noch viel mehr gelb sein": pushed the golden tint hard -
       `GOLDEN_TINT` now 0.93/0.80/0.30 and `GOLDEN_STRENGTH` 0.24 (was 0.10); summer palette bumped

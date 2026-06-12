@@ -90,6 +90,40 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
     }
   }
 
+  // ---------- a grand cypress avenue along the longest inland main road ----------
+  {
+    let best = -1;
+    let bestLen = 0;
+    network.paths.forEach((p, pi) => {
+      if (p.kind !== "main" || p.samples.length < 20) return;
+      const mid = p.samples[Math.floor(p.samples.length / 2)];
+      if (mid.x < map.coastX + 700) return; // keep it up in the hills
+      if (p.length > bestLen) {
+        bestLen = p.length;
+        best = pi;
+      }
+    });
+    if (best >= 0) {
+      const p = network.paths[best];
+      const spacing = 9;
+      let acc = spacing;
+      for (let i = 1; i < p.samples.length; i++) {
+        const s = p.samples[i];
+        acc += Math.hypot(s.x - p.samples[i - 1].x, s.z - p.samples[i - 1].z);
+        if (acc < spacing) continue;
+        acc = 0;
+        if (inTown(s.x, s.z, 20)) continue;
+        for (const side of [1, -1]) {
+          const off = p.half + 4;
+          const cx = s.x - s.dirZ * off * side;
+          const cz = s.z + s.dirX * off * side;
+          if (blocked(cx, cz, 2.5) || inTown(cx, cz, 6)) continue;
+          put("cypress", { x: cx, z: cz, rot: rand() * 6.28, scale: 1.3 + rand() * 0.4 });
+        }
+      }
+    }
+  }
+
   // ---------- beach pines ----------
   for (let z = -half; z < half; z += 26) {
     if (rand() < 0.5) {
