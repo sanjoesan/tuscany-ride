@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (23)** - v0.7q "elevation profile preview" (loop mode, 5-min autonomous loop):
+- [x] Route elevation profile in the menu: a `<canvas id="route-profile">` under the route info,
+      drawn by `drawRouteProfile` in main.ts from `route.samples` (dist/y/grade). Per-pixel column
+      bars from the baseline to the altitude, coloured by gradient (blue descent / green easy /
+      amber rolling / orange steep / red >9%), with min/max altitude labels. Range floored at 20 m
+      so flat coastal routes don't look like a wild zigzag. Hidden for Free ride.
+- [x] Real cycling-app UX (not more 3D): you can see a route's shape & difficulty before starting.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Headless screenshot still flaky here; the
+      profile is pure 2D-canvas drawing from already-tested route data, tsc-validated.)
+- [ ] Next: live elevation/grade HUD during the ride with a "you are here" marker; cloud shadows
+
 **2026-06-12 (22)** - v0.7p "ducks on the river" (loop mode, 5-min autonomous loop):
 - [x] Duck family (`River.buildDucks`): a low-poly mallard drake leading 4 ducklings in a line,
       plus a white duck and another mallard, on a calm mid-course reach above the tidal mouth and

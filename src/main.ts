@@ -9,6 +9,7 @@ import { VirtualTrainer } from "./bluetooth/virtualTrainer";
 import { Editor } from "./editor/editor";
 import { NpcManager } from "./game/npc";
 import { AmbientAudio } from "./audio/ambient";
+import type { Route } from "./world/routes";
 import type { Telemetry } from "./types";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -140,12 +141,67 @@ function updateRouteInfo(): void {
   if (selectedRoute === -1) {
     $("route-info").textContent =
       `Free ride on ${world.network.totalKm.toFixed(0)} km of roads: ←/→ picks the turn at junctions, U turns around`;
+    ($("route-profile") as HTMLCanvasElement).style.display = "none";
     return;
   }
   const r = world.routes[selectedRoute];
   if (!r) return;
   $("route-info").textContent =
     `${r.stats.distanceKm.toFixed(1)} km · ${r.stats.gainM} m climbing · max ${r.stats.maxGradePct}% · ~${r.stats.estMinutes} min at 29 km/h`;
+  drawRouteProfile(r);
+}
+
+/** Elevation profile of a route, coloured by gradient (green flat -> red steep). */
+function drawRouteProfile(r: Route): void {
+  const cv = $("route-profile") as HTMLCanvasElement;
+  const ctx = cv.getContext("2d");
+  if (!ctx || r.samples.length < 2) {
+    cv.style.display = "none";
+    return;
+  }
+  cv.style.display = "block";
+  const W = cv.width;
+  const H = cv.height;
+  const pad = 10;
+  ctx.clearRect(0, 0, W, H);
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const s of r.samples) {
+    if (s.y < minY) minY = s.y;
+    if (s.y > maxY) maxY = s.y;
+  }
+  const range = Math.max(20, maxY - minY); // floor so flat routes stay calm
+  const total = r.totalLength || 1;
+
+  const gradeColor = (g: number): string => {
+    const a = Math.abs(g) * 100;
+    if (g < -0.005) return "#5fa8e0"; // descent
+    if (a < 3) return "#5cc46a"; // easy
+    if (a < 6) return "#e0a93a"; // rolling
+    if (a < 9) return "#e06b2a"; // steep
+    return "#d23b3b"; // very steep
+  };
+
+  let si = 0;
+  for (let x = 0; x < W; x++) {
+    const d = (x / (W - 1)) * total;
+    while (si < r.samples.length - 1 && r.samples[si + 1].dist < d) si++;
+    const s = r.samples[si];
+    const top = H - pad - ((s.y - minY) / range) * (H - 2 * pad);
+    ctx.strokeStyle = gradeColor(s.grade);
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, H);
+    ctx.lineTo(x + 0.5, top);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = "16px monospace";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${Math.round(maxY)} m`, 5, 4);
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`${Math.round(minY)} m`, 5, H - 4);
 }
 
 function startRide(): void {
