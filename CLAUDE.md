@@ -68,6 +68,14 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (28)** - v0.8c "golden-hour light" (extends the golden look into the lighting):
+- [x] Warmed `applySun` daytime light: sun colour now lerps `0xffc183 -> 0xffe9c6` (warm golden-hour
+      all day instead of near-white at noon); fog/haze `0xe7cda8 -> 0xdcd3bd` (warm horizon, not cool
+      blue); water sun-glint matched to `0xffe9c6`. Night branch untouched; cycle mode inherits it.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Pure light-colour tweak; headless capture
+      still unavailable - awaiting user's eye to dial warmth up/down.)
+- [ ] Next: tune gold+light strength from feedback; period vehicles (Vespa/bubble-car); self-host fonts
+
 **2026-06-12 (27)** - v0.8b "golden Tuscany" (user request: terrain warmer/more golden):
 - [x] Reworked `SEASON_PALETTES` toward warm gold/sienna - summer most (ripe-gold wheat 0.88/0.71/0.31,
       sun-dried golden pasture, terracotta plow/sienna vine-earth, warm sage olive). Olives/vines/

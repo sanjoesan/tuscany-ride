@@ -1946,12 +1946,14 @@ export class Environment {
       (this.water.material as THREE.ShaderMaterial).uniforms.sunColor.value.set(0x1c2940);
     } else {
       this.sun.intensity = 1.1 + 2.1 * dayness;
-      this.sun.color.copy(new THREE.Color(0xffc890).lerp(new THREE.Color(0xfff0dc), dayness));
+      // warm, golden-hour sunlight all day (Tuscan light)
+      this.sun.color.copy(new THREE.Color(0xffc183).lerp(new THREE.Color(0xffe9c6), dayness));
       this.fill.intensity = 0.08 + 0.16 * dayness;
+      // warm hazy horizon rather than cool blue
       (this.scene.fog as THREE.Fog).color.copy(
-        new THREE.Color(0xe5cfb4).lerp(new THREE.Color(0xc9d9e6), dayness)
+        new THREE.Color(0xe7cda8).lerp(new THREE.Color(0xdcd3bd), dayness)
       );
-      (this.water.material as THREE.ShaderMaterial).uniforms.sunColor.value.set(0xfff0dc);
+      (this.water.material as THREE.ShaderMaterial).uniforms.sunColor.value.set(0xffe9c6);
     }
     (this.water.material as THREE.ShaderMaterial).uniforms.sunDirection.value.copy(this.sunDir);
   }
