@@ -1081,6 +1081,7 @@ export class Environment {
     this.buildStars();
     this.buildMoon();
     this.buildMeteor();
+    this.buildClouds();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1438,6 +1439,26 @@ export class Environment {
     this.meteor = { line, mat, active: false, nextAt: 6, t0: 0, a0: new THREE.Vector3(), dir: new THREE.Vector3() };
   }
 
+  // ---------- drifting cumulus clouds (daytime) ----------
+  private clouds: { sprite: THREE.Sprite; x0: number; speed: number }[] = [];
+
+  private buildClouds(): void {
+    const rand = mulberry32(5150);
+    const tex = buildCloudTexture();
+    const span = this.map.size;
+    for (let i = 0; i < 16; i++) {
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, fog: true });
+      const s = new THREE.Sprite(mat);
+      const w = 420 + rand() * 560;
+      s.scale.set(w, w * 0.55, 1);
+      const x0 = (rand() * 2 - 1) * span;
+      s.position.set(x0, 560 + rand() * 520, (rand() * 2 - 1) * span);
+      s.frustumCulled = false;
+      this.scene.add(s);
+      this.clouds.push({ sprite: s, x0, speed: 3 + rand() * 5 });
+    }
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1547,6 +1568,16 @@ export class Environment {
           pos.needsUpdate = true;
           m.mat.opacity = Math.sin(p * Math.PI) * this.starBase;
         }
+      }
+    }
+    // clouds drift slowly east, wrapping across the map; thin out at night
+    if (this.clouds.length) {
+      const span2 = this.map.size * 2;
+      const cloudOpacity = 0.9 * (1 - 0.7 * this.starBase);
+      for (const c of this.clouds) {
+        const x = (((c.x0 + t * c.speed + this.map.size) % span2) + span2) % span2 - this.map.size;
+        c.sprite.position.x = x;
+        (c.sprite.material as THREE.SpriteMaterial).opacity = cloudOpacity;
       }
     }
     // birds circle their roosts, wings flapping
@@ -1779,6 +1810,31 @@ function buildMoonTexture(): THREE.Texture {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+  return new THREE.CanvasTexture(canvas);
+}
+
+/** Soft cumulus puff: overlapping white lobes accumulated additively. */
+function buildCloudTexture(): THREE.Texture {
+  const W = 192;
+  const H = 112;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const rand = mulberry32(99);
+  ctx.globalCompositeOperation = "lighter";
+  for (let k = 0; k < 18; k++) {
+    // bias lobes to the upper half so the cloud keeps a flattish base
+    const cx = W * (0.18 + 0.64 * rand());
+    const cy = H * (0.3 + 0.45 * rand());
+    const r = H * (0.16 + 0.22 * rand());
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, "rgba(255,255,255,0.42)");
+    g.addColorStop(0.6, "rgba(255,255,255,0.16)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
   return new THREE.CanvasTexture(canvas);
 }
 

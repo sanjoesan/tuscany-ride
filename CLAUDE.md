@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (14)** - v0.7h "drifting clouds" (loop mode, 5-min autonomous loop):
+- [x] Daytime clouds (`Environment.buildClouds`): 16 cumulus Sprites (soft puff texture - overlapping
+      white lobes drawn with `lighter` compositing, flattish base), scattered over the map at
+      y=560-1080, drifting slowly east and wrapping across `±map.size`. `fog:true` so distant ones
+      melt into the haze; opacity thins to ~0.27 at night (`0.9 * (1 - 0.7*starBase)`).
+- [x] Verified the night sky renders without errors via a headless Chrome boot-shot (#time=night):
+      world boots, sunset-glow sky/sea/town/road all present, no runtime crash from the recent
+      sky features. (Stars/moon sit above the menu camera's horizon framing; best judged live.)
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, church-bell tolls on the hour, cloud shadows, more creative ideas
+
 **2026-06-12 (13)** - v0.7g "moon & shooting stars" (loop mode, 5-min autonomous loop):
 - [x] Moon disc (`Environment.buildMoon`): a Sprite hung in the exact moonlight direction (el 42,
       az 70 - same vector `applySun` lights the night with), so the visible moon and the shadows
