@@ -12,6 +12,8 @@ export class AmbientAudio {
   private master: GainNode | null = null;
   private seaLevel: GainNode | null = null;
   private windLevel: GainNode | null = null;
+  private cicadaLevel: GainNode | null = null;
+  private cicadasOn = false;
   private birdTimer: number | null = null;
   private muted: boolean;
   private night = false;
@@ -47,6 +49,13 @@ export class AmbientAudio {
   /** Birds fall quiet after dusk. Cheap - safe to call every frame. */
   setNight(night: boolean): void {
     this.night = night;
+  }
+
+  /** Cicada chorus on summer days. Cheap & idempotent - safe to call every frame. */
+  setCicadas(on: boolean): void {
+    if (!this.ctx || !this.cicadaLevel || on === this.cicadasOn) return;
+    this.cicadasOn = on;
+    this.cicadaLevel.gain.setTargetAtTime(on ? 0.13 : 0, this.ctx.currentTime, 0.8);
   }
 
   /**
@@ -152,7 +161,39 @@ export class AmbientAudio {
     this.seaLevel = seaLevel;
     this.lfo(ctx, 0.11, 0.18, seaSwing.gain, 0.55);
 
+    // cicadas: a high band-passed buzz (white noise) with a fast tremolo and a
+    // slow chorus swell. Off until setCicadas(true) on a summer day.
+    const white = this.whiteNoise(ctx, 1.5);
+    const cic = ctx.createBufferSource();
+    cic.buffer = white;
+    cic.loop = true;
+    const cicHi = ctx.createBiquadFilter();
+    cicHi.type = "highpass";
+    cicHi.frequency.value = 3500;
+    const cicBp = ctx.createBiquadFilter();
+    cicBp.type = "bandpass";
+    cicBp.frequency.value = 5200;
+    cicBp.Q.value = 1.6;
+    const trem = ctx.createGain();
+    const swell = ctx.createGain();
+    const cicLevel = ctx.createGain();
+    cicLevel.gain.value = 0;
+    cic.connect(cicHi).connect(cicBp).connect(trem).connect(swell).connect(cicLevel).connect(master);
+    cic.start();
+    this.cicadaLevel = cicLevel;
+    this.lfo(ctx, 52, 0.5, trem.gain, 0.5); // fast tremolo = the buzz
+    this.lfo(ctx, 0.13, 0.4, swell.gain, 0.6); // slow chorus swell
+
     this.scheduleBirds();
+  }
+
+  /** Flat white noise loop, for the high-frequency cicada buzz. */
+  private whiteNoise(ctx: AudioContext, seconds: number): AudioBuffer {
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
   }
 
   /** A short loop of leaky-integrated noise - bounded, low, surf-like. */

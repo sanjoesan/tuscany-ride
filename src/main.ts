@@ -453,6 +453,7 @@ function animate(): void {
   const t = clock.elapsedTime;
   world.update(t, camera.position);
   ambient.setNight(world.environment.isNight);
+  ambient.setCicadas(world.season === "summer" && !world.environment.isNight);
 
   // carillon: during a peal, override the bell's idle sway with a hard swing
   // and strike the bell tone at each extreme (runs after world.update so it wins)

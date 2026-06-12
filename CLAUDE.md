@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (32)** - v0.8g "le cicale" (summer cicada chorus):
+- [x] Cicada layer in `AmbientAudio`: white-noise -> highpass -> 5.2 kHz bandpass -> fast 52 Hz
+      tremolo (the buzz) -> slow 0.13 Hz chorus swell -> level -> master. `setCicadas(on)` ramps the
+      level (idempotent, safe per frame); `main.ts` turns it on when `season === "summer" && !night`.
+      Off in other seasons / at night; muted with M like everything else. No sound files.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Audio unverifiable headless; synthesis is
+      standard Web Audio, tsc-validated, fully guarded.)
+- [ ] Next: confirm yellow with user; villa at the avenue's end; Piaggio Ape; church-square cafe life
+
 **2026-06-12 (31)** - v0.8f "cypress avenue" (the postcard Tuscan road):
 - [x] A grand cypress avenue (in buildScenery): picks the longest inland "main" road (mid past
       coastX+700) and lines BOTH sides with tall cypresses every ~9 m, set back `half+4`, avoiding
