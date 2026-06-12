@@ -68,6 +68,15 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (11)** - v0.7e "the sea gets louder" (loop mode, 5-min autonomous loop):
+- [x] Positional ambient mix: each audio layer is now source -> filter -> swing (LFO wobble) ->
+      level (scene control) -> master. `AmbientAudio.setScene(coastDist, speedKmh)` rides the level
+      nodes: surf swells near the waterline and fades ~1.2 km inland (smoothstep), wind rises with
+      ground speed. Smoothed with `setTargetAtTime`; the LFO wobble scales with the layer so it
+      never clips to zero. `main.ts` feeds it the rider's `coastX` distance + km/h ~5x a second.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, church-bell tolls on the hour, distant-thunder weather, more creative ideas
+
 **2026-06-12 (10)** - v0.7d "ambient sound" (loop mode, 5-min autonomous loop):
 - [x] Procedural soundscape (`src/audio/ambient.ts`, `AmbientAudio`): wind (band-passed leaky-noise
       loop, slow breathing LFO), a rolling sea swell (low-passed noise, ~9 s swell LFO) and sparse

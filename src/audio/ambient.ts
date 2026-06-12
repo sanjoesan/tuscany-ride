@@ -10,8 +10,8 @@
 export class AmbientAudio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private windGain: GainNode | null = null;
-  private seaGain: GainNode | null = null;
+  private seaLevel: GainNode | null = null;
+  private windLevel: GainNode | null = null;
   private birdTimer: number | null = null;
   private muted: boolean;
   private night = false;
@@ -49,6 +49,21 @@ export class AmbientAudio {
     this.night = night;
   }
 
+  /**
+   * Adapt the mix to where the rider is. `coastDist` is metres inland from the
+   * waterline (<=0 at/over the sea); `speedKmh` is the current ground speed.
+   * Surf swells near the shore and fades ~1.2 km inland; wind rises with speed.
+   * Smoothed via setTargetAtTime - fine to call a few times a second.
+   */
+  setScene(coastDist: number, speedKmh: number): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const near = 1 - smoothstep(120, 1200, Math.max(0, coastDist));
+    if (this.seaLevel) this.seaLevel.gain.setTargetAtTime(0.05 + 0.4 * near, now, 0.6);
+    const fast = Math.min(1, Math.max(0, speedKmh) / 45);
+    if (this.windLevel) this.windLevel.gain.setTargetAtTime(0.24 + 0.4 * fast, now, 0.5);
+  }
+
   // -------------------------------------------------------------------
 
   private build(): void {
@@ -64,7 +79,12 @@ export class AmbientAudio {
 
     const noise = this.noiseBuffer(ctx, 2.3);
 
-    // wind: airy band-passed noise that slowly breathes
+    // Each layer is: source -> filter -> swing (LFO wobble) -> level (scene
+    // control, set by setScene) -> master. The LFO drives the swing's base so
+    // the wobble scales with the layer; the level node is what we ride up/down
+    // by proximity & speed without the wobble ever clipping to zero.
+
+    // wind: airy band-passed noise that slowly breathes; louder at speed
     const wind = ctx.createBufferSource();
     wind.buffer = noise;
     wind.loop = true;
@@ -72,14 +92,16 @@ export class AmbientAudio {
     windFilt.type = "bandpass";
     windFilt.frequency.value = 480;
     windFilt.Q.value = 0.6;
-    const windGain = ctx.createGain();
-    wind.connect(windFilt).connect(windGain).connect(master);
+    const windSwing = ctx.createGain();
+    const windLevel = ctx.createGain();
+    windLevel.gain.value = 0.3;
+    wind.connect(windFilt).connect(windSwing).connect(windLevel).connect(master);
     wind.start();
-    this.windGain = windGain;
-    this.lfo(ctx, 0.06, 0.07, windGain.gain, 0.17);
+    this.windLevel = windLevel;
+    this.lfo(ctx, 0.06, 0.2, windSwing.gain, 0.5);
     this.lfo(ctx, 0.045, 220, windFilt.frequency, 480);
 
-    // sea: a low rumble with a rolling ~9 s swell
+    // sea: a low rumble with a rolling ~9 s swell; louder near the coast
     const sea = ctx.createBufferSource();
     sea.buffer = noise;
     sea.loop = true;
@@ -87,11 +109,13 @@ export class AmbientAudio {
     seaFilt.type = "lowpass";
     seaFilt.frequency.value = 360;
     seaFilt.Q.value = 0.7;
-    const seaGain = ctx.createGain();
-    sea.connect(seaFilt).connect(seaGain).connect(master);
+    const seaSwing = ctx.createGain();
+    const seaLevel = ctx.createGain();
+    seaLevel.gain.value = 0.25;
+    sea.connect(seaFilt).connect(seaSwing).connect(seaLevel).connect(master);
     sea.start();
-    this.seaGain = seaGain;
-    this.lfo(ctx, 0.11, 0.16, seaGain.gain, 0.22);
+    this.seaLevel = seaLevel;
+    this.lfo(ctx, 0.11, 0.18, seaSwing.gain, 0.55);
 
     this.scheduleBirds();
   }
@@ -154,4 +178,10 @@ export class AmbientAudio {
     osc.start(now);
     osc.stop(tt + 0.05);
   }
+}
+
+/** Hermite smoothstep: 0 below `a`, 1 above `b`, eased in between. */
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }

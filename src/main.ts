@@ -16,6 +16,7 @@ const $ = (id: string) => document.getElementById(id)!;
 // procedural wind/sea/bird soundscape; started on the first ride (user gesture)
 const ambient = new AmbientAudio();
 let audioHintShown = false;
+let audioSceneAccum = 0;
 
 // ---------------- renderer / scene ----------------
 const canvas = $("scene") as HTMLCanvasElement;
@@ -371,6 +372,14 @@ function animate(): void {
   const t = clock.elapsedTime;
   world.update(t, camera.position);
   ambient.setNight(world.environment.isNight);
+  // a few times a second, tell the soundscape where we are (surf near the coast)
+  audioSceneAccum += dt;
+  if (audioSceneAccum > 0.2) {
+    audioSceneAccum = 0;
+    const focus = mode === "riding" && ride ? ride.rider.object.position : camera.position;
+    const speedKmh = mode === "riding" && ride ? ride.physics.v * 3.6 : 0;
+    ambient.setScene(focus.x - world.map.coastX, speedKmh);
+  }
   pollGamepad();
   if (mode !== "editor") {
     npcs?.update(
