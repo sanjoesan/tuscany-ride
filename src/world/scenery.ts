@@ -1078,6 +1078,7 @@ export class Environment {
     this.buildBalloons();
     this.buildShoreFoam();
     this.buildSeaBoats();
+    this.buildStars();
 
     this.applySun(TIME_PRESETS.afternoon.el, TIME_PRESETS.afternoon.az);
   }
@@ -1333,6 +1334,55 @@ export class Environment {
     }
   }
 
+  // ---------- stars: a dome of points that fades in after dusk ----------
+  private stars: THREE.Points | null = null;
+  private starBase = 0; // night-driven opacity, twinkled in update()
+
+  private buildStars(): void {
+    const rand = mulberry32(2025);
+    const N = 1400;
+    const R = 9000;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < N; i++) {
+      // upper hemisphere only, so nothing sits below the horizon
+      const y = 0.05 + rand() * 0.95;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = rand() * Math.PI * 2;
+      pos[i * 3] = Math.cos(theta) * r * R;
+      pos[i * 3 + 1] = y * R;
+      pos[i * 3 + 2] = Math.sin(theta) * r * R;
+      const tint = rand();
+      if (tint < 0.15) c.setHSL(0.6, 0.5, 0.85); // bluish
+      else if (tint < 0.25) c.setHSL(0.08, 0.5, 0.85); // warm
+      else c.setHSL(0, 0, 0.7 + rand() * 0.3); // white
+      const b = 0.55 + rand() * 0.45;
+      col[i * 3] = c.r * b;
+      col[i * 3 + 1] = c.g * b;
+      col[i * 3 + 2] = c.b * b;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    const mat = new THREE.PointsMaterial({
+      size: 2.4,
+      sizeAttenuation: false,
+      map: buildStarSprite(),
+      vertexColors: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const stars = new THREE.Points(geo, mat);
+    stars.name = "stars";
+    stars.frustumCulled = false; // it's re-centred on the camera every frame
+    this.scene.add(stars);
+    this.stars = stars;
+  }
+
   setTimeOfDay(mode: TimeOfDay): void {
     this.mode = mode;
     if (mode !== "cycle") {
@@ -1367,6 +1417,8 @@ export class Environment {
     // windows & lanterns light up at dusk and stay lit through the night
     const glowFactor = elDeg <= 2 ? 1 : elDeg < 14 ? (14 - elDeg) / 12 : 0;
     NIGHT_GLOW_MATERIAL.emissiveIntensity = 2.6 * glowFactor;
+    // stars come out as the sun sinks below the horizon
+    this.starBase = Math.max(0, Math.min(1, (5 - elDeg) / 10));
     if (night) {
       this.sun.intensity = 0.55;
       this.sun.color.set(0x8fa8cf); // moonlight
@@ -1395,6 +1447,14 @@ export class Environment {
 
   update(t: number, focus: THREE.Vector3): void {
     (this.water.material as THREE.ShaderMaterial).uniforms.time.value = t * 0.5;
+    // stars: keep the dome centred on the camera, twinkle the overall brightness
+    if (this.stars) {
+      this.stars.position.copy(focus);
+      this.stars.visible = this.starBase > 0.01;
+      if (this.stars.visible) {
+        (this.stars.material as THREE.PointsMaterial).opacity = this.starBase * (0.8 + 0.2 * Math.sin(t * 1.5));
+      }
+    }
     // birds circle their roosts, wings flapping
     for (const f of this.flocks) {
       const a = t * f.speed + f.phase;
@@ -1576,6 +1636,21 @@ function buildWakeTexture(): THREE.Texture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
+}
+
+/** Soft round star sprite - a white radial gradient fading to transparent. */
+function buildStarSprite(): THREE.Texture {
+  const S = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.35, "rgba(255,255,255,0.5)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  return new THREE.CanvasTexture(canvas);
 }
 
 export { smoothstep };

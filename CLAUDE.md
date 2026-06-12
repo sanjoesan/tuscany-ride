@@ -68,6 +68,17 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (12)** - v0.7f "starry night" (loop mode, 5-min autonomous loop):
+- [x] Night starfield (`Environment.buildStars`): 1400-point upper-hemisphere dome (R=9000), soft
+      radial star sprite, additive blending, mostly white with a few bluish/warm tints. `fog:false`
+      so the night fog doesn't swallow it; `depthWrite:false`; `frustumCulled:false` because it's
+      re-centred on the camera every frame (acts as an infinite backdrop). Best seen at `#time=night`.
+- [x] Fades with the sun: `applySun` sets `starBase = clamp((5 - elDeg)/10)` (out by dawn, full at
+      night) and `update` twinkles overall opacity + hides the dome entirely in daylight. Works in
+      the 8-min day/night cycle and the fixed time-of-day presets.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: shooting stars + a moon disc, perf pass, church-bell tolls, more creative ideas
+
 **2026-06-12 (11)** - v0.7e "the sea gets louder" (loop mode, 5-min autonomous loop):
 - [x] Positional ambient mix: each audio layer is now source -> filter -> swing (LFO wobble) ->
       level (scene control) -> master. `AmbientAudio.setScene(coastDist, speedKmh)` rides the level
