@@ -25,6 +25,8 @@ export class World {
   private worldGroup: THREE.Group | null = null;
   /** boats & buoys that bob on the sea (collected once per rebuild) */
   private bobbers: { obj: THREE.Object3D; baseY: number; baseRoll: number; phase: number; amp: number; roll: number }[] = [];
+  /** lighthouse beam pivots that sweep and glow at night (collected per rebuild) */
+  private beacons: { pivot: THREE.Object3D; speed: number }[] = [];
 
   constructor(scene: THREE.Scene, map: MapData, renderer: THREE.WebGLRenderer) {
     this.scene = scene;
@@ -60,8 +62,9 @@ export class World {
     this.scene.add(group);
     this.worldGroup = group;
 
-    // collect the things that bob on the water for the per-frame animation
+    // collect the things that bob on the water + lighthouse beams to animate
     this.bobbers = [];
+    this.beacons = [];
     group.traverse((o) => {
       const b = o.userData.bob as { phase: number; amp: number; roll: number } | undefined;
       if (b) {
@@ -74,6 +77,8 @@ export class World {
           roll: b.roll,
         });
       }
+      const beacon = o.userData.beacon as { speed: number } | undefined;
+      if (beacon) this.beacons.push({ pivot: o, speed: beacon.speed });
     });
   }
 
@@ -87,6 +92,19 @@ export class World {
     for (const b of this.bobbers) {
       b.obj.position.y = b.baseY + Math.sin(t * 1.1 + b.phase) * b.amp;
       if (b.roll) b.obj.rotation.z = b.baseRoll + Math.sin(t * 0.9 + b.phase) * b.roll;
+    }
+    // lighthouse beams: spin always, but only glow once it's dark
+    if (this.beacons.length) {
+      const night = this.environment.nightAmount;
+      const beamOpacity = night * (0.11 + 0.04 * Math.sin(t * 4));
+      for (const beacon of this.beacons) {
+        beacon.pivot.rotation.y = t * beacon.speed;
+        for (const beam of beacon.pivot.children) {
+          beam.visible = beamOpacity > 0.01;
+          const mat = (beam as THREE.Mesh).material as THREE.MeshBasicMaterial;
+          if (mat) mat.opacity = beamOpacity;
+        }
+      }
     }
   }
 }

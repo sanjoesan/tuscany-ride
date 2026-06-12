@@ -230,6 +230,7 @@ export function buildScenery(map: MapData, terrain: Terrain, network: RoadNetwor
   // ---------- life & infrastructure ----------
   group.add(buildSigns(map, terrain, network));
   group.add(buildHarbour(map, terrain, rand));
+  group.add(buildLighthouse(map, terrain));
   group.add(buildAnimals(map, terrain, rand, blocked, inTown));
   group.add(buildHayBales(map, terrain, rand, blocked, inTown));
   group.add(buildSunflowers(map, terrain, rand, blocked, inTown));
@@ -475,6 +476,99 @@ function buildHarbour(map: MapData, terrain: Terrain, rand: () => number): THREE
     buoy.userData.bob = { phase: rand() * 6.28, amp: 0.12 + rand() * 0.08, roll: 0 };
     group.add(buoy);
   }
+  return group;
+}
+
+// ====================================================================
+// lighthouse: a banded tower on the shore with a beam that sweeps at night
+// (the pivot is tagged userData.beacon; World.update rotates it & fades the
+//  beam in after dusk via the Environment's night amount)
+// ====================================================================
+
+function buildLighthouse(map: MapData, terrain: Terrain): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "lighthouse";
+  const town = map.towns[0];
+  if (!town || town.x > map.coastX + 420) return group;
+
+  const lx = map.coastX + 18;
+  const lz = town.z - 150;
+  const baseY = Math.max(0, terrain.height(lx, lz));
+
+  // rocky outcrop it stands on
+  const rock = new THREE.Mesh(
+    new THREE.CylinderGeometry(6, 8.5, 3, 9),
+    new THREE.MeshStandardMaterial({ color: 0x6f6a60, roughness: 1, flatShading: true })
+  );
+  rock.position.set(lx, baseY + 0.4, lz);
+  rock.castShadow = rock.receiveShadow = true;
+  group.add(rock);
+
+  const baseTop = baseY + 1.8;
+  const towerH = 24;
+  const rBot = 3.4;
+  const rTop = 2.4;
+  const tower = new THREE.Mesh(
+    new THREE.CylinderGeometry(rTop, rBot, towerH, 16),
+    new THREE.MeshStandardMaterial({ color: 0xf3f0e8, roughness: 0.7 })
+  );
+  tower.position.set(lx, baseTop + towerH / 2, lz);
+  tower.castShadow = true;
+  group.add(tower);
+
+  // red bands wrapped around the taper
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.7 });
+  for (let i = 0; i < 3; i++) {
+    const f = 0.18 + i * 0.3; // fraction up the tower
+    const rr = rBot + (rTop - rBot) * f;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(rr + 0.06, rr + 0.06, 2.2, 16), redMat);
+    band.position.set(lx, baseTop + towerH * f, lz);
+    group.add(band);
+  }
+
+  // gallery ring + lantern cage
+  const metal = new THREE.MeshStandardMaterial({ color: 0x33383d, roughness: 0.5, metalness: 0.4 });
+  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.0, 0.8, 16), metal);
+  gallery.position.set(lx, baseTop + towerH, lz);
+  group.add(gallery);
+
+  const lampY = baseTop + towerH + 2.0;
+  const cage = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 3.2, 12, 1, true), metal);
+  cage.position.set(lx, lampY, lz);
+  group.add(cage);
+
+  // the lamp itself - glows after dusk via the shared night-glow material
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(1.35, 12, 10), NIGHT_GLOW_MATERIAL);
+  glow.position.set(lx, lampY, lz);
+  group.add(glow);
+
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.4, 12), new THREE.MeshStandardMaterial({ color: 0x2a2f34, roughness: 0.6 }));
+  roof.position.set(lx, lampY + 2.6, lz);
+  group.add(roof);
+
+  // two opposite light beams on a pivot that World.update spins
+  const beamGeo = new THREE.ConeGeometry(7, 130, 16, 1, true);
+  beamGeo.translate(0, -65, 0); // apex at origin
+  beamGeo.rotateZ(-Math.PI / 2); // lay it horizontal (points -X)
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xfff2c0,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const pivot = new THREE.Group();
+  pivot.position.set(lx, lampY, lz);
+  pivot.userData.beacon = { speed: 0.6 };
+  for (let s = 0; s < 2; s++) {
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.rotation.y = s * Math.PI;
+    pivot.add(beam);
+  }
+  group.add(pivot);
+
   return group;
 }
 
@@ -1014,6 +1108,11 @@ export class Environment {
   private envDirty = true;
   /** true while the scene is moonlit (riders switch their lamps on) */
   isNight = false;
+
+  /** 0 in daylight .. 1 deep night; drives stars, moon and the lighthouse beam */
+  get nightAmount(): number {
+    return this.starBase;
+  }
 
   constructor(map: MapData, scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
     this.scene = scene;

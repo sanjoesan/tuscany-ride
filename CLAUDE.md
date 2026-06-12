@@ -68,6 +68,18 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (15)** - v0.7i "the lighthouse" (loop mode, 5-min autonomous loop):
+- [x] Harbour lighthouse (`buildLighthouse` in scenery.ts): a red-banded white tower on a rocky
+      outcrop at the shore by `towns[0]` (coastX+18, 150 m north of the pier), tapered cylinder +
+      gallery ring + lantern cage + glowing lamp (shared NIGHT_GLOW material, lights at dusk) + cone
+      roof. Placed at `max(0, terrain.height)` so it stands at the waterline.
+- [x] Sweeping beam: two opposite additive cones on a pivot tagged `userData.beacon`. World collects
+      beacons per rebuild (like the bobbers) and in `World.update` spins the pivot every frame, fading
+      the beam in only after dark via the new `Environment.nightAmount` getter (= starBase); a slow
+      sine makes it pulse. Beams `visible=false` by day (no overdraw).
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: perf pass, cloud shadows, church-bell tolls, more creative ideas
+
 **2026-06-12 (14)** - v0.7h "drifting clouds" (loop mode, 5-min autonomous loop):
 - [x] Daytime clouds (`Environment.buildClouds`): 16 cumulus Sprites (soft puff texture - overlapping
       white lobes drawn with `lighter` compositing, flattish base), scattered over the map at
