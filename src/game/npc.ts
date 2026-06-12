@@ -88,8 +88,10 @@ export class NpcManager {
     if (paths.length > 0) {
       const vehicleCount = Math.min(14, Math.max(6, Math.round(this.world.network.totalKm / 3.5)));
       for (let i = 0; i < vehicleCount; i++) {
-        const isTruck = rand() < 0.25;
-        const { object, wheels } = isTruck ? buildTruck(rand) : buildCar(rand);
+        const isTruck = rand() < 0.22;
+        // most cars are little 1960s bubble cars; some are the bigger saloon
+        const built = isTruck ? buildTruck(rand) : rand() < 0.62 ? buildBubbleCar(rand) : buildCar(rand);
+        const { object, wheels } = built;
         const pathIdx = Math.floor(rand() * paths.length);
         this.group.add(object);
         const speed = (isTruck ? 11 : 14) + rand() * 4; // ~40-65 km/h
@@ -339,6 +341,70 @@ function buildCar(rand: () => number): { object: THREE.Group; wheels: THREE.Mesh
   for (const [x, z] of [[1.25, 0.82], [1.25, -0.82], [-1.25, 0.82], [-1.25, -0.82]]) {
     const w = new THREE.Mesh(wheelGeo, darkMat);
     w.position.set(x, 0.34, z);
+    g.add(w);
+    wheels.push(w);
+  }
+  g.traverse((o) => (o.castShadow = true));
+  return { object: g, wheels };
+}
+
+// period pastels for the little bubble cars (Fiat 500 / 600 era)
+const BUBBLE_COLORS = [0xe7ddc4, 0xa8c4c0, 0xc0392b, 0x7d9b6a, 0xd99a2b, 0x6b8cae, 0xf0ece2, 0xcf6a3a];
+
+/** A rounded 1960s bubble car - short body, domed roof, round headlamps. */
+function buildBubbleCar(rand: () => number): { object: THREE.Group; wheels: THREE.Mesh[] } {
+  const g = new THREE.Group();
+  const color = BUBBLE_COLORS[Math.floor(rand() * BUBBLE_COLORS.length)];
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.5 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x8fa9bd, roughness: 0.12, metalness: 0.5 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 0.8 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcccfd3, roughness: 0.3, metalness: 0.9 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.78, 1.42), bodyMat);
+  body.position.y = 0.6;
+  g.add(body);
+  // round off the nose & tail with low domes
+  for (const ex of [1.35, -1.35]) {
+    const end = new THREE.Mesh(new THREE.SphereGeometry(0.72, 14, 10), bodyMat);
+    end.scale.set(0.5, 0.55, 0.71);
+    end.position.set(ex, 0.62, 0);
+    g.add(end);
+  }
+  // greenhouse: glass band + a rounded body-colour roof dome
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 1.3), glassMat);
+  glass.position.set(-0.1, 1.12, 0);
+  g.add(glass);
+  const roof = new THREE.Mesh(new THREE.SphereGeometry(0.86, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), bodyMat);
+  roof.scale.set(0.92, 0.5, 0.78);
+  roof.position.set(-0.15, 1.32, 0);
+  g.add(roof);
+
+  // round headlamps, simple taillights, chrome bumpers
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0x887744, roughness: 0.3 });
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0xc01818, emissive: 0x550808, roughness: 0.4 });
+  const lampGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12);
+  lampGeo.rotateZ(Math.PI / 2);
+  for (const side of [0.45, -0.45]) {
+    const hl = new THREE.Mesh(lampGeo, headMat);
+    hl.position.set(1.5, 0.74, side);
+    g.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.2), tailMat);
+    tl.position.set(-1.62, 0.74, side);
+    g.add(tl);
+  }
+  for (const ex of [1.55, -1.55]) {
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.2), chromeMat);
+    bumper.position.set(ex, 0.46, 0);
+    g.add(bumper);
+  }
+
+  // four small wheels (same orientation as the other vehicles so rolling works)
+  const wheels: THREE.Mesh[] = [];
+  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 12);
+  wheelGeo.rotateX(Math.PI / 2);
+  for (const [x, z] of [[0.95, 0.66], [0.95, -0.66], [-0.95, 0.66], [-0.95, -0.66]]) {
+    const w = new THREE.Mesh(wheelGeo, darkMat);
+    w.position.set(x, 0.3, z);
     g.add(w);
     wheels.push(w);
   }

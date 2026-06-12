@@ -68,6 +68,16 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (29)** - v0.8d "bubble cars" (period traffic for the 60s theme):
+- [x] `buildBubbleCar` in npc.ts: a rounded 1960s bubble car (Fiat 500/600 era) - short body with
+      domed nose/tail, glass band + body-colour roof dome, round chrome-ringed headlamps, chrome
+      bumpers, four small wheels. Period pastel palette (BUBBLE_COLORS). Same `{object, wheels}`
+      contract + wheel orientation as the other vehicles, so traffic/overtake/rolling logic is unchanged.
+- [x] Traffic mix retuned: ~22% trucks, of the rest ~62% bubble cars / ~38% saloons - the little
+      cinquecenti now dominate the roads.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass.
+- [ ] Next: Vespa scooters (with a seated rider); tune gold/light from feedback; self-host fonts
+
 **2026-06-12 (28)** - v0.8c "golden-hour light" (extends the golden look into the lighting):
 - [x] Warmed `applySun` daytime light: sun colour now lerps `0xffc183 -> 0xffe9c6` (warm golden-hour
       all day instead of near-white at noon); fog/haze `0xe7cda8 -> 0xdcd3bd` (warm horizon, not cool
