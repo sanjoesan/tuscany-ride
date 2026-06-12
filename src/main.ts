@@ -23,8 +23,9 @@ let audioSceneAccum = 0;
 const perfEl = document.createElement("div");
 perfEl.id = "perf";
 perfEl.style.cssText =
-  "position:fixed;top:8px;left:8px;z-index:50;font:12px/1.45 monospace;color:#9effa0;" +
-  "background:rgba(0,0,0,0.55);padding:6px 9px;border-radius:6px;white-space:pre;pointer-events:none;display:none";
+  "position:fixed;top:8px;left:8px;z-index:50;font:12px/1.45 'Jost','Futura',monospace;color:#f6efdd;" +
+  "background:rgba(40,28,20,0.82);border:1px solid rgba(217,154,43,0.5);padding:6px 9px;border-radius:6px;" +
+  "white-space:pre;pointer-events:none;display:none;letter-spacing:0.5px";
 document.body.appendChild(perfEl);
 let perfOn = false;
 let perfAccum = 0;
@@ -176,11 +177,11 @@ function drawRouteProfile(r: Route): void {
 
   const gradeColor = (g: number): string => {
     const a = Math.abs(g) * 100;
-    if (g < -0.005) return "#5fa8e0"; // descent
-    if (a < 3) return "#5cc46a"; // easy
-    if (a < 6) return "#e0a93a"; // rolling
-    if (a < 9) return "#e06b2a"; // steep
-    return "#d23b3b"; // very steep
+    if (g < -0.005) return "#2f7d7d"; // descent - petrol
+    if (a < 3) return "#6e7a45"; // easy - olive
+    if (a < 6) return "#d99a2b"; // rolling - ochre
+    if (a < 9) return "#c05a35"; // steep - terracotta
+    return "#c0392b"; // very steep - Campari red
   };
 
   let si = 0;
@@ -196,8 +197,8 @@ function drawRouteProfile(r: Route): void {
     ctx.stroke();
   }
 
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
-  ctx.font = "16px monospace";
+  ctx.fillStyle = "rgba(44,33,26,0.78)";
+  ctx.font = "16px 'Jost','Futura','Century Gothic',sans-serif";
   ctx.textBaseline = "top";
   ctx.fillText(`${Math.round(maxY)} m`, 5, 4);
   ctx.textBaseline = "bottom";

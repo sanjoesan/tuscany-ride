@@ -310,14 +310,14 @@ export class Editor {
     canvas.width = 256;
     canvas.height = 64;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = highlight ? "rgba(255, 215, 64, 0.92)" : "rgba(18, 24, 40, 0.85)";
+    ctx.fillStyle = highlight ? "rgba(217, 154, 43, 0.94)" : "rgba(40, 28, 20, 0.85)";
     ctx.beginPath();
     ctx.roundRect(4, 8, 248, 48, 12);
     ctx.fill();
-    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.font = "bold 28px 'Bodoni Moda', Georgia, 'Bodoni MT', serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = highlight ? "#1a1a2e" : "#ffffff";
+    ctx.fillStyle = highlight ? "#2c211a" : "#f6efdd";
     ctx.fillText(text, 128, 33);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));

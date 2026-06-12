@@ -68,6 +68,26 @@ Vite + TypeScript + Three.js. No game engine; everything is hand-rolled.
 
 ## Status (update each iteration)
 
+**2026-06-12 (25)** - v0.8 "Italia, anni '60" - full UI restyle (user request):
+- [x] 1960s Italian look across the whole UI (`src/styles.css` rewritten): Bodoni (Didone) display
+      type + Jost (Futura-like) geometric UI type, warm Mediterranean palette via CSS vars (aged
+      ivory paper, Campari red, ochre, olive, petrol teal, espresso). Menu = vintage travel-poster
+      card with a thin tricolore top rule + Bodoni red title; buttons flat enamel; tracked uppercase
+      labels.
+- [x] HUD reimagined as an ivory 1960s instrument cluster (Fiat 500 / Veglia Borletti): cream panel,
+      Bodoni tabular numerals, red "speedo" big-metric, espresso labels. Turn arrows, summary tiles,
+      editor panel and toast all re-skinned to the palette.
+- [x] Diagrams as vintage printed charts: both elevation profiles (menu + live HUD) recoloured -
+      petrol descent / olive / ochre / terracotta / Campari-red climbs - on parchment, with ink
+      labels and an espresso-outlined red marker. Grade HUD colour + perf overlay + editor town
+      labels re-tinted to match.
+- [x] Fonts: Google Fonts (Bodoni Moda + Jost) with system Bodoni/Futura/serif fallbacks, so it
+      stays offline-CAPABLE (graceful degrade) though no longer fully self-contained for fonts -
+      flagged for the user; can self-host woff2 later for full offline fidelity.
+- [x] Build clean (tsc+vite), all 31 smoke tests pass. (Headless screenshot capture unavailable in
+      this env; CSS keeps every original selector/class so JS toggles are unaffected.)
+- [ ] Next: self-host the woff2 fonts for true offline; tune palette from user feedback; resume features
+
 **2026-06-12 (24)** - v0.7r "gradient-coloured live profile" (loop mode, 5-min autonomous loop):
 - [x] The in-ride HUD elevation profile (already had a "you are here" marker) is now gradient-
       coloured by grade like the menu preview (blue descent / green / amber / orange / red >9%),

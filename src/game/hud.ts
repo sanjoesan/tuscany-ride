@@ -67,7 +67,7 @@ export class Hud {
     const g = v.grade * 100;
     const gradeEl = $("hud-grade");
     gradeEl.textContent = `${g >= 0 ? "" : ""}${g.toFixed(1)}%`;
-    gradeEl.style.color = g > 6 ? "#ff6b5e" : g > 2.5 ? "#f7b733" : g < -2 ? "#6fc1ff" : "#fff";
+    gradeEl.style.color = g > 6 ? "#c0392b" : g > 2.5 ? "#c05a35" : g < -2 ? "#1f5a5a" : "#2c211a";
     $("hud-distance").textContent = (v.distanceM / 1000).toFixed(2);
     const min = Math.floor(v.timeS / 60);
     const hrs = Math.floor(min / 60);
@@ -79,14 +79,14 @@ export class Hud {
     this.drawProfile(v.rideDist);
   }
 
-  /** "r,g,b" for a gradient, so the climbs ahead read at a glance */
+  /** "r,g,b" vintage gradient, so the climbs ahead read at a glance */
   private gradeRGB(g: number): string {
     const a = Math.abs(g) * 100;
-    if (g < -0.005) return "95,168,224"; // descent
-    if (a < 3) return "92,196,106"; // easy
-    if (a < 6) return "224,169,58"; // rolling
-    if (a < 9) return "224,107,42"; // steep
-    return "210,59,59"; // very steep
+    if (g < -0.005) return "47,125,125"; // descent - petrol
+    if (a < 3) return "110,122,69"; // easy - olive
+    if (a < 6) return "217,154,43"; // rolling - ochre
+    if (a < 9) return "192,90,53"; // steep - terracotta
+    return "192,57,43"; // very steep - Campari red
   }
 
   private drawProfile(rideDist: number): void {
@@ -117,9 +117,9 @@ export class Hud {
     const mx = (d0 / this.total) * w;
     ctx.beginPath();
     ctx.arc(mx, py(yy), 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#ff4a3d";
+    ctx.fillStyle = "#c0392b";
     ctx.fill();
-    ctx.strokeStyle = "#fff";
+    ctx.strokeStyle = "#2c211a";
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
